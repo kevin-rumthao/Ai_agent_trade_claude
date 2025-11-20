@@ -25,10 +25,16 @@ class FeatureEngine:
     def __init__(self) -> None:
         self.ema_9_buffer: deque[float] = deque(maxlen=settings.ema_short_period * 2)
         self.ema_50_buffer: deque[float] = deque(maxlen=settings.ema_long_period * 2)
-        self.price_buffer: deque[float] = deque(maxlen=settings.volatility_lookback)
+        
+        # Ensure price buffer is large enough for Bollinger Bands and Volatility
+        max_price_lookback = max(settings.volatility_lookback, settings.bollinger_period)
+        self.price_buffer: deque[float] = deque(maxlen=max_price_lookback)
+        
+        # Ensure close buffer is large enough for RSI
+        max_close_lookback = max(settings.atr_period, settings.rsi_period + 1)
         self.high_buffer: deque[float] = deque(maxlen=settings.atr_period)
         self.low_buffer: deque[float] = deque(maxlen=settings.atr_period)
-        self.close_buffer: deque[float] = deque(maxlen=settings.atr_period)
+        self.close_buffer: deque[float] = deque(maxlen=max_close_lookback)
 
         self.ema_9: float | None = None
         self.ema_50: float | None = None
@@ -103,6 +109,50 @@ class FeatureEngine:
 
         vwap = sum(t.price * t.quantity for t in trades) / total_volume
         return vwap
+
+    def compute_rsi(self, prices: list[float], period: int = 14) -> float | None:
+        """Compute Relative Strength Index."""
+        if len(prices) < period + 1:
+            return None
+
+        gains = []
+        losses = []
+
+        for i in range(1, len(prices)):
+            change = prices[i] - prices[i-1]
+            if change >= 0:
+                gains.append(change)
+                losses.append(0.0)
+            else:
+                gains.append(0.0)
+                losses.append(abs(change))
+
+        # Simple average for first step (could use EMA for smoother RSI)
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+
+        if avg_loss == 0:
+            return 100.0
+
+        rs = avg_gain / avg_loss
+        rsi = 100.0 - (100.0 / (1.0 + rs))
+        return rsi
+
+    def compute_bollinger_bands(
+        self, prices: list[float], period: int = 20, std_dev: float = 2.0
+    ) -> tuple[float, float, float] | None:
+        """Compute Bollinger Bands (Upper, Mid, Lower)."""
+        if len(prices) < period:
+            return None
+
+        recent_prices = prices[-period:]
+        sma = sum(recent_prices) / period
+        std = float(np.std(recent_prices))
+
+        upper = sma + (std * std_dev)
+        lower = sma - (std * std_dev)
+
+        return upper, sma, lower
 
 
 # Global feature engine instance
@@ -187,6 +237,23 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
     # Compute VWAP
     vwap = feature_engine.compute_vwap(trades[-100:])
 
+    # Compute RSI
+    rsi = feature_engine.compute_rsi(
+        list(feature_engine.close_buffer), settings.rsi_period
+    )
+
+    # Compute Bollinger Bands
+    bb_upper = None
+    bb_mid = None
+    bb_lower = None
+    bb_res = feature_engine.compute_bollinger_bands(
+        list(feature_engine.price_buffer),
+        settings.bollinger_period,
+        settings.bollinger_std_dev
+    )
+    if bb_res:
+        bb_upper, bb_mid, bb_lower = bb_res
+
     features = MarketFeatures(
         timestamp=datetime.now(),
         symbol=symbol,
@@ -197,7 +264,11 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
         realized_volatility=realized_vol,
         orderbook_imbalance=ob_imbalance,
         spread=spread,
-        vwap=vwap
+        vwap=vwap,
+        rsi=rsi,
+        bollinger_upper=bb_upper,
+        bollinger_mid=bb_mid,
+        bollinger_lower=bb_lower
     )
 
     return {

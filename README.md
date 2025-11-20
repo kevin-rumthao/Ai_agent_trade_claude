@@ -2,7 +2,7 @@
 
 This project implements a **modular, event‑driven trading agent** built on **LangGraph**. It runs a full pipeline:
 
-> Market Ingest → Feature Engineering → Regime Classification → Strategy Router → Momentum Strategy → Risk Manager → Execution Agent
+> Market Ingest → Feature Engineering → Regime Classification → Strategy Router → [Momentum / Mean Reversion] → Risk Manager → Execution Agent
 
 The system supports **multiple trading backends**:
 - **Binance** (testnet/mainnet for crypto)
@@ -35,8 +35,9 @@ It's designed to support **backtesting** and **simulation** via a LOB simulator 
   - `market_ingest.py` – load market data (Binance or CSV stub).
   - `feature_engineering.py` – compute EMA(9/50), ATR, realized volatility, OB imbalance, VWAP.
   - `regime_classifier.py` – rule‑based regime classifier with LLM fallback.
-  - `strategy_router.py` – route to momentum / neutral strategy.
+  - `strategy_router.py` – route to momentum / mean reversion / neutral strategy.
   - `momentum_policy.py` – EMA‑crossover momentum strategy.
+  - `mean_reversion_policy.py` – RSI + Bollinger Bands mean reversion strategy.
   - `risk_manager.py` – risk checks + position sizing.
   - `execution_agent.py` – place orders via Binance tool.
 - `src/app/schemas/` – Pydantic models for events (`TradeEvent`, `OrderbookUpdate`, `KlineEvent`) and domain models (`MarketFeatures`, `Signal`, `Order`, `PortfolioState`, etc.).
@@ -329,6 +330,11 @@ Key settings in `.env`:
 | `MAX_DRAWDOWN_PERCENT` | Max drawdown % | `10.0` | Any float |
 | `LOOP_INTERVAL_SECONDS` | Time between iterations | `60` | Any integer |
 | `LLM_MODEL` | Gemini model | `gemini-1.5-pro` | Any Gemini model |
+| `RSI_PERIOD` | RSI period | `14` | Integer |
+| `RSI_OVERBOUGHT` | RSI overbought threshold | `70` | Integer |
+| `RSI_OVERSOLD` | RSI oversold threshold | `30` | Integer |
+| `BOLLINGER_PERIOD` | Bollinger Band period | `20` | Integer |
+| `BOLLINGER_STD_DEV` | Bollinger Band std dev | `2.0` | Float |
 
 ---
 
@@ -470,7 +476,7 @@ Make sure secrets for live integrations are **not** required for CI (tests shoul
 
 - Add a dedicated backtest runner script and CLI.
 - Enhance `RiskManager` with volatility‑based sizing and daily drawdown tracking.
-- Add more strategies (e.g. mean‑reversion) and integrate via `strategy_router`.
+- Add more strategies (e.g. breakout) and integrate via `strategy_router`.
 - Expand test coverage for the full LangGraph pipeline, backtester, and metrics.
 - Add richer monitoring / logging, e.g. Prometheus metrics and dashboards.
 

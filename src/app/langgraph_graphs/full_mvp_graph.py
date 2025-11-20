@@ -16,8 +16,9 @@ from app.schemas.models import (
 from app.nodes.market_ingest import ingest_market_data_node
 from app.nodes.feature_engineering import compute_features_node
 from app.nodes.regime_classifier import classify_regime_node
-from app.nodes.strategy_router import route_strategy_node, should_use_momentum
+from app.nodes.strategy_router import route_strategy_node, get_strategy_node_name
 from app.nodes.momentum_policy import momentum_strategy_node
+from app.nodes.mean_reversion_policy import mean_reversion_strategy_node
 from app.nodes.risk_manager import risk_management_node
 from app.nodes.execution_agent import execution_agent_node
 
@@ -82,7 +83,7 @@ def create_full_mvp_graph() -> StateGraph:
     Create the complete MVP trading graph.
 
     Flow:
-    START -> ingest -> features -> regime -> router -> [momentum|neutral] -> risk -> execution -> END
+    START -> ingest -> features -> regime -> router -> [momentum|mean_reversion|neutral] -> risk -> execution -> END
 
     The router uses conditional edges to select the appropriate strategy.
     """
@@ -94,6 +95,7 @@ def create_full_mvp_graph() -> StateGraph:
     workflow.add_node("classify_regime", classify_regime_node)
     workflow.add_node("route_strategy", route_strategy_node)
     workflow.add_node("momentum", momentum_strategy_node)
+    workflow.add_node("mean_reversion", mean_reversion_strategy_node)
     workflow.add_node("neutral", neutral_strategy_node)
     workflow.add_node("risk_check", risk_management_node)
     workflow.add_node("execute_orders", execution_agent_node)
@@ -107,15 +109,17 @@ def create_full_mvp_graph() -> StateGraph:
     # Conditional edge from router to strategy
     workflow.add_conditional_edges(
         "route_strategy",
-        should_use_momentum,
+        get_strategy_node_name,
         {
             "momentum": "momentum",
+            "mean_reversion": "mean_reversion",
             "neutral": "neutral"
         }
     )
 
-    # Both strategies flow to risk management
+    # All strategies flow to risk management
     workflow.add_edge("momentum", "risk_check")
+    workflow.add_edge("mean_reversion", "risk_check")
     workflow.add_edge("neutral", "risk_check")
 
     # Risk to execution to end

@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     ema_long_period: int = 50
     atr_period: int = 14
     volatility_lookback: int = 20
+    
+    # Mean Reversion Parameters
+    rsi_period: int = 14
+    rsi_overbought: int = 70
+    rsi_oversold: int = 30
+    bollinger_period: int = 20
+    bollinger_std_dev: float = 2.0
 
     # LLM Configuration (Gemini)
     llm_model: str = "gemini-pro-latest"
@@ -110,6 +117,13 @@ class Settings(BaseSettings):
             self.ema_long_period = int(os.getenv("EMA_LONG_PERIOD", "50"))
             self.atr_period = int(os.getenv("ATR_PERIOD", "14"))
             self.volatility_lookback = int(os.getenv("VOLATILITY_LOOKBACK", "20"))
+            
+            # Mean Reversion Parameters
+            self.rsi_period = int(os.getenv("RSI_PERIOD", "14"))
+            self.rsi_overbought = int(os.getenv("RSI_OVERBOUGHT", "70"))
+            self.rsi_oversold = int(os.getenv("RSI_OVERSOLD", "30"))
+            self.bollinger_period = int(os.getenv("BOLLINGER_PERIOD", "20"))
+            self.bollinger_std_dev = float(os.getenv("BOLLINGER_STD_DEV", "2.0"))
 
             # LLM Configuration (Gemini)
             self.llm_model = os.getenv("LLM_MODEL", "gemini-pro-latest")

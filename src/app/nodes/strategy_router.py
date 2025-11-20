@@ -36,7 +36,7 @@ async def route_strategy_node(state: RouterState) -> RouterState:
     if regime.regime == "TRENDING":
         selected_strategy = "momentum"
     elif regime.regime == "RANGING":
-        selected_strategy = "mean_reversion"  # Not implemented in MVP
+        selected_strategy = "mean_reversion"
     elif regime.regime == "HIGH_VOLATILITY":
         selected_strategy = "neutral"  # Avoid trading in high vol
     elif regime.regime == "LOW_VOLATILITY":
@@ -55,12 +55,14 @@ async def route_strategy_node(state: RouterState) -> RouterState:
     }
 
 
-def should_use_momentum(state: RouterState) -> str:
-    """Conditional edge to determine if momentum strategy should be used."""
+def get_strategy_node_name(state: RouterState) -> str:
+    """Conditional edge to determine which strategy node to call."""
     selected = state.get("selected_strategy")
 
     if selected == "momentum":
         return "momentum"
+    elif selected == "mean_reversion":
+        return "mean_reversion"
     else:
         return "neutral"
 

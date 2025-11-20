@@ -23,6 +23,12 @@ class MarketFeatures(BaseModel):
     orderbook_imbalance: Optional[float] = None
     spread: Optional[float] = None
     vwap: Optional[float] = None
+    
+    # Mean Reversion features
+    rsi: Optional[float] = None
+    bollinger_upper: Optional[float] = None
+    bollinger_mid: Optional[float] = None
+    bollinger_lower: Optional[float] = None
 
 
 class MarketRegime(BaseModel):
@@ -40,7 +46,7 @@ class Signal(BaseModel):
 
     timestamp: datetime
     symbol: str
-    strategy: str
+    strategy: str  # "momentum", "mean_reversion", "neutral"
     direction: Literal["LONG", "SHORT", "NEUTRAL"]
     strength: float = Field(ge=0.0, le=1.0)
     confidence: float = Field(ge=0.0, le=1.0)
