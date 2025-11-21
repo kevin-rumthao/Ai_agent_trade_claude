@@ -1,0 +1,72 @@
+.env
+.env.*
+.env.local
+.envrc
+
+# Virtual env
+.venv/
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Logs
+*.log
+.coverage
+coverage.xml
+htmlcov/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# macOS
+.DS_Store
+
+# Keys and credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+credentials
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+secrets.auto.tfvars
+
+# Docker
+docker-compose.override.yml
+.env.docker
+
+# Jupyter
+.ipynb_checkpoints
+
+# C extensions and caches
+*.so
+.cache/
+
+# Local test outputs
+/tmp/
+
+# Node stuff (not used)
+node_modules/
+
+# Poetry virtualenvs
+.poetry/
+
