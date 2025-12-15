@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     # Gemini API key (used instead of Anthropic)
     gemini_api_key: str = ""
 
+    # Kotak Neo API Keys
+    kotak_consumer_key: str = ""
+    kotak_mobile_number: str = ""
+    kotak_password: str = ""  # MPIN or Password
+    kotak_totp_secret: str = ""  # For generating TOTP if needed
+
+
     # Trading Provider Selection
     # Options: "binance" or "alpaca"
     trading_provider: str = "binance"
@@ -52,10 +59,23 @@ class Settings(BaseSettings):
     symbol: str = "BTCUSDT"
     testnet: bool = True
 
+    # Reliability
+    MAX_RETRIES: int = 3
+    RETRY_DELAY_MIN: float = 1.0
+    RETRY_DELAY_MAX: float = 10.0
+
+    # Risk Limits
+    REQUIRE_STOP_LOSS: bool = True
+    STOP_LOSS_PCT: float = 0.02  # Default 2% hard stop
+
     # Risk Parameters
     max_position_size: float = 0.1  # BTC
     max_drawdown_percent: float = 10.0
     max_daily_loss: float = 1000.0  # USD
+    risk_per_trade_percent: float = 0.01
+    risk_per_trade_percent: float = 0.01
+    atr_stop_multiplier: float = 2.0
+    target_volatility: float = 0.20  # Annualized (20%)
 
     # Strategy Parameters
     ema_short_period: int = 9
@@ -100,6 +120,12 @@ class Settings(BaseSettings):
             self.alpaca_api_secret = os.getenv("ALPACA_API_SECRET", "")
             self.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
+            # Kotak Neo API Keys
+            self.kotak_consumer_key = os.getenv("KOTAK_CONSUMER_KEY", "")
+            self.kotak_mobile_number = os.getenv("KOTAK_MOBILE_NUMBER", "")
+            self.kotak_password = os.getenv("KOTAK_PASSWORD", "")
+            self.kotak_totp_secret = os.getenv("KOTAK_TOTP_SECRET", "")
+
             # Trading Provider Selection
             self.trading_provider = os.getenv("TRADING_PROVIDER", "binance")
 
@@ -107,10 +133,21 @@ class Settings(BaseSettings):
             self.symbol = os.getenv("SYMBOL", "BTCUSDT")
             self.testnet = os.getenv("TESTNET", "true").lower() in {"1", "true", "yes"}
 
+            # Reliability
+            self.MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
+            self.RETRY_DELAY_MIN = float(os.getenv("RETRY_DELAY_MIN", "1.0"))
+            self.RETRY_DELAY_MAX = float(os.getenv("RETRY_DELAY_MAX", "10.0"))
+
+            # Risk Limits
+            self.REQUIRE_STOP_LOSS = os.getenv("REQUIRE_STOP_LOSS", "true").lower() in {"1", "true", "yes"}
+            self.STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", "0.02"))
+
             # Risk Parameters
             self.max_position_size = float(os.getenv("MAX_POSITION_SIZE", "0.1"))
             self.max_drawdown_percent = float(os.getenv("MAX_DRAWDOWN_PERCENT", "10.0"))
             self.max_daily_loss = float(os.getenv("MAX_DAILY_LOSS", "1000.0"))
+            self.risk_per_trade_percent = float(os.getenv("RISK_PER_TRADE_PERCENT", "0.01"))
+            self.atr_stop_multiplier = float(os.getenv("ATR_STOP_MULTIPLIER", "2.0"))
 
             # Strategy Parameters
             self.ema_short_period = int(os.getenv("EMA_SHORT_PERIOD", "9"))

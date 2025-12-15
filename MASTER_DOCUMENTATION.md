@@ -1,7 +1,7 @@
 # 📚 LangGraph AI Trading Agent - Master Documentation
 
-**Version**: 1.0  
-**Last Updated**: November 17, 2025  
+**Version**: 1.1  
+**Last Updated**: December 4, 2025  
 **Author**: Kevin  
 **Status**: ✅ Production Ready
 
@@ -23,9 +23,9 @@
 
 ---
 
-## 1. Project Overview
+## 1. System Overview
 
-### 1.1 What Is This?
+### 1.1 Introduction
 
 This project implements a **modular, event-driven AI trading agent** built on **LangGraph**. It combines:
 
@@ -36,19 +36,35 @@ This project implements a **modular, event-driven AI trading agent** built on **
 
 ### 1.2 Key Features
 
-✅ **Multi-Provider Support**: Switch between Binance and Alpaca with a single config change  
+```python
+from app.tools.trading_provider import trading_provider
+
+# Works with both Binance and Alpaca
+orderbook = await trading_provider.get_orderbook(symbol)
+result = await trading_provider.execute_order(order)
+```
+
+✅ **Multi-Provider Support**: Switch between Binance, Alpaca, and Kotak Neo with a single config change  
 ✅ **Paper Trading**: Test strategies risk-free using Alpaca's paper trading ($100K virtual cash)  
 ✅ **AI-Powered**: Uses Google Gemini for intelligent regime classification  
+✅ **Advanced Strategies**: Includes Momentum and Mean Reversion strategies  
+✅ **Hedge Agent**: Automated hedging of positions using spot/futures  
+✅ **Smart Execution**: Limit order placement with market fallback  
 ✅ **Health Checks**: Validates all API connections before trading starts  
 ✅ **Modular Architecture**: Easy to extend with new strategies or providers  
 ✅ **Comprehensive Testing**: Unit tests for all major components  
+
+```bash
+docker compose up --build
+```
+
 ✅ **Production Ready**: Logging, error handling, graceful shutdowns  
 
 ### 1.3 Trading Pipeline
 
 The system executes a complete trading pipeline every iteration:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    TRADING PIPELINE                          │
 ├─────────────────────────────────────────────────────────────┤
@@ -76,6 +92,7 @@ The system executes a complete trading pipeline every iteration:
 |----------|------|------|--------|--------|
 | **Alpaca** | Stocks & Crypto | Paper Trading | AAPL, TSLA, BTC/USD | ✅ Recommended |
 | **Binance** | Crypto | Testnet/Mainnet | BTCUSDT, ETHUSDT | ✅ Working |
+| **Kotak Neo** | Stocks & F&O | Live/Paper | NIFTY, BANKNIFTY | 🚧 Experimental |
 
 ### 1.5 Tech Stack
 
@@ -93,11 +110,12 @@ The system executes a complete trading pipeline every iteration:
 
 ### 2.1 Project Structure
 
-```
+```text
 Ai_agent_trade_claude/
 ├── src/app/
 │   ├── config.py                    # Application settings
-│   ├── main.py                      # Main entrypoint
+│   ├── main.py                      # Main entrypoint (Graph Runner)
+│   ├── control.py                   # Interactive Command Center
 │   ├── healthcheck.py               # Health check system
 │   │
 │   ├── langgraph_graphs/
@@ -111,8 +129,11 @@ Ai_agent_trade_claude/
 │   │   ├── regime_classifier.py     # Market regime detection
 │   │   ├── strategy_router.py       # Strategy selection
 │   │   ├── momentum_policy.py       # Momentum trading logic
+│   │   ├── mean_reversion_policy.py # Mean reversion trading logic
+│   │   ├── hedge_agent.py           # Hedging logic
 │   │   ├── risk_manager.py          # Risk checks
-│   │   └── execution_agent.py       # Order execution
+│   │   ├── execution_agent.py       # Order execution
+│   │   └── data_sanitizer.py        # Data integrity filter
 │   │
 │   ├── schemas/                     # Data models
 │   │   ├── events.py                # Market events
@@ -121,21 +142,33 @@ Ai_agent_trade_claude/
 │   ├── tools/                       # External integrations
 │   │   ├── alpaca_tool.py           # Alpaca API wrapper
 │   │   ├── binance_tool.py          # Binance API wrapper
+│   │   ├── kotak_neo_tool.py        # Kotak Neo API wrapper (Experimental)
 │   │   ├── llm_tool.py              # Gemini LLM wrapper
-│   │   └── trading_provider.py      # Provider abstraction
+│   │   ├── trading_provider.py      # Provider abstraction
+│   │   └── mock_tool.py             # Simulation tool
 │   │
 │   └── utils/                       # Utilities
 │       ├── backtester.py            # Backtesting engine
 │       ├── lob_simulator.py         # Order book simulator
-│       └── metrics.py               # Performance metrics
+│       ├── metrics.py               # Performance metrics
+│       ├── persistence.py           # State persistence
+│       ├── resilience.py            # API retry logic
+│       └── statistics.py            # Statistical calculations
 │
 ├── tests/                           # Unit tests
 ├── scripts/                         # Helper scripts
 │   ├── quickstart.py                # Interactive setup
-│   ├── test_alpaca.py               # Alpaca connection test
-│   └── test_gemini.py               # Gemini connection test
+│   ├── run_backtest.py              # Backtesting system
+│   ├── run_paper_trade.py           # 15m Strategy Paper Trader
+│   ├── convert_nifty_data.py        # Nifty data formatter
+│   ├── fetch_data.py                # Historical data fetcher
+│   ├── reconstruct_orderbook.py     # LOB reconstruction
+│   └── verify_setup.sh              # Environment verification
 │
 ├── docs/                            # Documentation
+│   ├── analysis/                    # Project analyses and state reports
+│   └── progress/                    # Progress reports
+├── data/                            # storage for local data files
 ├── docker/                          # Docker configuration
 ├── k8s/                             # Kubernetes manifests
 ├── .env                             # Environment configuration
@@ -146,11 +179,13 @@ Ai_agent_trade_claude/
 ### 2.2 Core Components
 
 #### **Market Ingest Node**
+
 - Fetches real-time market data (orderbook, trades, klines)
 - Supports multiple data sources
 - Handles API errors gracefully
 
 #### **Feature Engineering Node**
+
 - Calculates technical indicators:
   - EMA (9-period, 50-period)
   - ATR (Average True Range)
@@ -160,6 +195,7 @@ Ai_agent_trade_claude/
   - Spread
 
 #### **Regime Classifier Node**
+
 - Rule-based classification (fast)
 - AI fallback for ambiguous cases (Gemini)
 - Identifies market states:
@@ -170,11 +206,25 @@ Ai_agent_trade_claude/
   - UNKNOWN
 
 #### **Strategy Router Node**
+
 - Selects appropriate strategy based on regime
 - Routes to momentum, mean-reversion, or neutral
 - Extensible for new strategies
 
+#### **Mean Reversion Policy Node**
+
+- Executes when market is RANGING
+- Uses RSI and Bollinger Bands
+- Buys oversold, Sells overbought
+
+#### **Hedge Agent Node**
+
+- Monitors portfolio exposure
+- Hedges spot positions with futures (if applicable)
+- Manages hedge ratio dynamically
+
 #### **Risk Manager Node**
+
 - Validates signals against risk limits:
   - Maximum position size
   - Maximum drawdown percentage
@@ -183,10 +233,18 @@ Ai_agent_trade_claude/
 - Position sizing logic
 
 #### **Execution Agent Node**
+
 - Places orders on trading platform
+- **Smart Execution**: Uses limit orders with market fallback
 - Handles order types (market, limit)
 - Error handling and retries
 - Execution confirmation
+
+#### **Data Sanitizer Node**
+
+- Filters invalid market data before processing
+- Ensures data integrity (positive prices, valid volumes)
+- Prevents garbage-in/garbage-out scenarios
 
 ### 2.3 Data Flow
 
@@ -225,6 +283,33 @@ class FullMVPState(TypedDict):
 
 ### 2.4 LangGraph Workflow
 
+```mermaid
+graph TD
+    Start((Start)) --> Ingest[Market Ingest]
+    Ingest --> Features[Feature Engineering]
+    Features --> Regime[Regime Classification]
+    Regime --> Router{Strategy Router}
+    
+    Router -- "Trending / Low Vol" --> Momentum[Momentum Strategy]
+    Router -- "Ranging" --> MeanRev[Mean Reversion Strategy]
+    Router -- "High Vol / Unknown" --> Neutral[Neutral Strategy]
+    
+    Momentum --> Hedge[Hedge Agent]
+    MeanRev --> Hedge
+    Neutral --> Hedge
+
+    Hedge --> Risk[Risk Management]
+    
+    Risk --> Execution[Execution Agent]
+    Execution --> End((End))
+
+    style Start fill:#f9f,stroke:#333,stroke-width:2px
+    style End fill:#f9f,stroke:#333,stroke-width:2px
+    style Router fill:#ff9,stroke:#333,stroke-width:2px
+    style Risk fill:#9f9,stroke:#333,stroke-width:2px
+    style Hedge fill:#9cf,stroke:#333,stroke-width:2px
+```
+
 ```python
 # Graph Structure
 workflow = StateGraph(FullMVPState)
@@ -235,7 +320,9 @@ workflow.add_node("compute_features", compute_features_node)
 workflow.add_node("classify_regime", classify_regime_node)
 workflow.add_node("route_strategy", route_strategy_node)
 workflow.add_node("momentum", momentum_strategy_node)
+workflow.add_node("mean_reversion", mean_reversion_strategy_node)
 workflow.add_node("neutral", neutral_strategy_node)
+workflow.add_node("hedge_agent", hedge_agent_node)
 workflow.add_node("risk_check", risk_management_node)
 workflow.add_node("execute_orders", execution_agent_node)
 
@@ -248,13 +335,21 @@ workflow.add_edge("classify_regime", "route_strategy")
 # Conditional routing
 workflow.add_conditional_edges(
     "route_strategy",
-    should_use_momentum,
-    {"momentum": "momentum", "neutral": "neutral"}
+    get_strategy_node_name,
+    {
+        "momentum": "momentum", 
+        "mean_reversion": "mean_reversion",
+        "neutral": "neutral"
+    }
 )
 
-# Converge paths
-workflow.add_edge("momentum", "risk_check")
-workflow.add_edge("neutral", "risk_check")
+# Converge paths to Hedge Agent
+workflow.add_edge("momentum", "hedge_agent")
+workflow.add_edge("mean_reversion", "hedge_agent")
+workflow.add_edge("neutral", "hedge_agent")
+
+# Hedge to Risk to Execution
+workflow.add_edge("hedge_agent", "risk_check")
 workflow.add_edge("risk_check", "execute_orders")
 workflow.add_edge("execute_orders", END)
 ```
@@ -271,7 +366,7 @@ workflow.add_edge("execute_orders", END)
 - **Trading account** (Alpaca or Binance)
 - **Google AI account** (for Gemini API)
 
-### 3.2 Quick Installation
+### 3.2 Quick Start Guide
 
 ```bash
 # Navigate to project
@@ -291,12 +386,13 @@ poetry shell
 
 #### **Option A: Alpaca (Recommended for Testing)**
 
-1. Sign up at https://alpaca.markets/
+1. Sign up at <https://alpaca.markets/>
 2. Navigate to Paper Trading dashboard
 3. Generate API keys
 4. Save API Key and Secret Key
 
 **Benefits:**
+
 - ✅ Free $100,000 virtual cash
 - ✅ No risk to real money
 - ✅ Real-time market data
@@ -304,13 +400,13 @@ poetry shell
 
 #### **Option B: Binance (For Crypto)**
 
-1. Go to https://testnet.binance.vision/ (testnet)
+1. Go to <https://testnet.binance.vision/> (testnet)
 2. Create API keys
 3. Enable spot trading permissions
 
 #### **Gemini API (Required)**
 
-1. Visit https://ai.google.dev/
+1. Visit <https://ai.google.dev/>
 2. Create API key
 3. Note free tier limits: 15 req/min, 1,500 req/day
 
@@ -335,6 +431,14 @@ ALPACA_API_SECRET=...
 # =================================================================
 BINANCE_API_KEY=...
 BINANCE_API_SECRET=...
+
+# =================================================================
+# KOTAK NEO API CREDENTIALS
+# =================================================================
+KOTAK_CONSUMER_KEY=...
+KOTAK_MOBILE_NUMBER=...
+KOTAK_PASSWORD=...
+KOTAK_TOTP_SECRET=...
 
 # =================================================================
 # GEMINI LLM API KEY (Required)
@@ -367,6 +471,13 @@ EMA_LONG_PERIOD=50
 ATR_PERIOD=14
 VOLATILITY_LOOKBACK=20
 
+# Mean Reversion
+RSI_PERIOD=14
+RSI_OVERBOUGHT=70
+RSI_OVERSOLD=30
+BOLLINGER_PERIOD=20
+BOLLINGER_STD_DEV=2.0
+
 # =================================================================
 # LLM CONFIGURATION
 # =================================================================
@@ -392,6 +503,7 @@ poetry run python scripts/quickstart.py
 ```
 
 This will guide you through:
+
 1. Provider selection
 2. API credential entry
 3. Risk parameter configuration
@@ -405,7 +517,7 @@ This will guide you through:
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `TRADING_PROVIDER` | string | `binance` | Trading platform: `alpaca` or `binance` |
+| `TRADING_PROVIDER` | string | `binance` | Trading platform: `alpaca`, `binance`, or `kotak` |
 | `ALPACA_API_KEY` | string | - | Alpaca API key |
 | `ALPACA_API_SECRET` | string | - | Alpaca API secret |
 | `BINANCE_API_KEY` | string | - | Binance API key |
@@ -420,14 +532,19 @@ This will guide you through:
 | `LOOP_INTERVAL_SECONDS` | int | `60` | Seconds between iterations |
 | `MAX_ITERATIONS` | int | `0` | Max iterations (0=unlimited) |
 | `TIME_LIMIT_HOURS` | float | `0.0` | Time limit (0=unlimited) |
+| `RSI_PERIOD` | int | `14` | RSI period for Mean Reversion |
+| `BOLLINGER_PERIOD` | int | `20` | Bollinger Bands period |
+| `KOTAK_CONSUMER_KEY` | string | - | Kotak Neo Consumer Key |
 
 ### 4.2 Symbol Formats
 
 **Alpaca:**
+
 - Stocks: `AAPL`, `TSLA`, `GOOGL`
 - Crypto: `BTC/USD`, `ETH/USD`
 
 **Binance:**
+
 - Crypto: `BTCUSDT`, `ETHUSDT`, `BNBUSDT`
 
 ### 4.3 Risk Management Settings
@@ -461,46 +578,99 @@ poetry run python -m app.healthcheck
 ```
 
 **Expected Output:**
-```
+
+```bash
 Running external health checks (ALPACA, Gemini)...
 ✅ All health checks passed
-{
-  'trading_provider': {
-    'provider': 'alpaca',
-    'symbol': 'BTC/USD',
-    'ok': True,
-    'portfolio_balance': 100000.0,
-    'portfolio_equity': 100000.0,
-    'orderbook_levels': 10,
-    'recent_trades': 0,
-    'klines': 5
-  },
-  'llm': {
-    'model': 'gemini-pro-latest',
-    'regime': 'TRENDING',
-    'confidence': 0.5,
-    'ok': True
-  },
-  'ok': True
-}
+{'trading_provider': {'provider': 'alpaca', 'symbol': 'BTC/USD', 'ok': True, 'portfolio_balance': 100000.0, 'portfolio_equity': 100000.0, 'orderbook_levels': 10, 'recent_trades': 0, 'klines': 5}, 'llm': {'model': 'gemini-pro-latest', 'regime': 'TRENDING', 'confidence': 0.5, 'ok': True}, 'ok': True}
 ```
 
-### 5.2 Start Trading
+### 5.2 Interactive Dashboard
+
+The system includes a rich, reliable command-line interface (CLI) for monitoring and control, designed with user engagement elements:
+
+```bash
+poetry run python -m app.control
+```
+
+**Features:**
+
+- 📊 **Live Trading Arena**: Monitor real-time bot performance and market stats.
+- 🧪 **Simulation Lab**: Configure and run backtests via the 'Training Dojo'.
+- 📈 **Performance Metrics**: View accumulated stats and 'XP' progress in the 'Hall of Fame'.
+- ⚙️ **Configuration Management**: View current settings in the 'Armory'.
+
+### 5.3 Start Trading (Manual)
+
+#### **Option A: General Graph Runner**
+
+Runs the full LangGraph agent with the logic defined in `app.main`.
 
 ```bash
 poetry run python -m app.main
 ```
 
-**What Happens:**
-1. Connects to trading provider (Alpaca/Binance)
-2. Validates all API connections
-3. Compiles LangGraph workflow
-4. Enters continuous trading loop
-5. Executes pipeline every 60 seconds (configurable)
+#### **Option B: 15-Minute "Titanium" Strategy (Paper Trading)**
 
-### 5.3 Example Output
+Runs the specialized 15-minute resampling strategy loop. **Recommended for Paper Trading.**
 
+```bash
+poetry run python scripts/run_paper_trade.py
 ```
+
+**What Happens:**
+
+1. Connects to trading provider
+2. Fetches 1-minute data and resamples to 15-minute candles
+3. Computes features (OFI, Volatility, Indicators)
+4. Classifies Regime (Trending/Ranging)
+5. Routes to Strategy (Momentum or Mean Reversion)
+6. Executives Orders via Risk Manager
+
+### 5.4 Run Backtesting
+
+Test strategies against historical data using the robust backtester.
+
+**Primary Script:** `scripts/run_backtest.py`
+
+#### Common Scenarios
+
+```bash
+# 1. Basic Momentum Backtest (Last 7 Days)
+poetry run python scripts/run_backtest.py --days 7 --strategy momentum
+
+# 2. Visual Backtest with Equity Curve (Recommended)
+poetry run python scripts/run_backtest.py --days 7 --strategy momentum --visual
+
+# 3. Mean Reversion Strategy (Last 30 Days)
+poetry run python scripts/run_backtest.py --days 30 --strategy mean_reversion --visual
+
+# 4. Using Local Data File (Offline)
+poetry run python scripts/run_backtest.py --data_file data/nifty50_clean.csv --visual
+
+# 5. Using Pre-calculated Features (e.g. OFI from CSV)
+poetry run python scripts/run_backtest.py --days 7 --features_file results/ofi_data.csv --visual
+```
+
+#### Command Syntax Reference
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--symbol` | str | `BTCUSDT` | Trading pair to backtest. |
+| `--days` | int | `1` | Number of days of historical data to fetch. |
+| `--strategy` | str | `momentum` | Strategy to use: `momentum` or `mean_reversion`. |
+| `--provider` | str | `binance` | Data source: `binance`, `alpaca`, `mock`. |
+| `--visual` | flag | `False` | If set, displays matplotlib charts (Equity & Trades). |
+| `--spread` | float | `0.0005` | Simulated spread cost (0.0005 = 0.05%). |
+| `--slippage` | float | `0.0005` | Simulated slippage cost (0.0005 = 0.05%). |
+| `--data_file` | str | `None` | Path to local CSV file (overrides provider). |
+| `--features_file` | str | `None` | Path to CSV with pre-calculated features. |
+
+- `--features_file`: Path to external CSV with pre-calculated features (e.g. OFI data)
+
+### 5.5 Example Output
+
+```bash
 2025-11-17 10:00:00 - __main__ - INFO - LangGraph Trading Agent Starting...
 2025-11-17 10:00:00 - __main__ - INFO - Symbol: BTC/USD
 2025-11-17 10:00:00 - __main__ - INFO - Initializing trading system...
@@ -534,7 +704,8 @@ Trading Loop Iteration 1
 
 ### 5.4 Stop the System
 
-#### **Method 1: Keyboard Interrupt (Recommended)**
+### Method 1: Keyboard Interrupt (Recommended)
+
 Press **`Ctrl+C`** in the terminal
 
 ```bash
@@ -543,19 +714,24 @@ Trading system stopped cleanly
 Total iterations completed: 42
 ```
 
-#### **Method 2: Time Limit**
+### Method 2: Time Limit
+
 Set in `.env`:
+
 ```env
 TIME_LIMIT_HOURS=2.0  # Stop after 2 hours
 ```
 
-#### **Method 3: Iteration Limit**
+### Method 3: Iteration Limit
+
 Set in `.env`:
+
 ```env
 MAX_ITERATIONS=100  # Stop after 100 iterations
 ```
 
 #### **Method 4: Kill Process**
+
 ```bash
 # Find process
 ps aux | grep "app.main"
@@ -617,11 +793,13 @@ LOOP_INTERVAL_SECONDS=900  # ~96 Gemini calls/day
 ### 6.5 Cost Estimation
 
 **Free Tier (Current Setup):**
+
 - Alpaca: $0 (paper trading)
 - Gemini: $0 (within free tier)
 - **Total:** $0/month
 
 **If Exceeding Gemini Free Tier:**
+
 - Gemini Pro: $0.00025 per 1K characters
 - Average: ~500 chars per call
 - 1,500 calls/day = $0.19/day = ~$5.70/month
@@ -633,17 +811,20 @@ LOOP_INTERVAL_SECONDS=900  # ~96 Gemini calls/day
 ### 7.1 View Logs
 
 **Real-time:**
+
 ```bash
 # Logs print to stdout by default
 poetry run python -m app.main
 ```
 
 **Debug Mode:**
+
 ```env
 LOG_LEVEL=DEBUG
 ```
 
 **Save to File:**
+
 ```bash
 poetry run python -m app.main > trading.log 2>&1
 tail -f trading.log
@@ -651,9 +832,10 @@ tail -f trading.log
 
 ### 7.2 Monitor Alpaca Account
 
-**Dashboard:** https://app.alpaca.markets/paper/dashboard/overview
+**Dashboard:** <https://app.alpaca.markets/paper/dashboard/overview>
 
 View:
+
 - Current balance
 - Open positions
 - Order history
@@ -672,6 +854,7 @@ View:
 ### 7.4 Alerts & Notifications
 
 Currently not implemented. Future enhancement:
+
 - Email alerts on large losses
 - Slack notifications for trades
 - SMS for critical errors
@@ -688,7 +871,9 @@ poetry run pytest
 
 # Specific test file
 poetry run pytest tests/test_ingest.py
+```
 
+```bash
 # With coverage
 poetry run pytest --cov=app tests/
 
@@ -719,6 +904,7 @@ LOG_LEVEL=DEBUG
 ```
 
 Enables verbose logging:
+
 - API request/response details
 - Feature calculations
 - State transitions
@@ -744,6 +930,7 @@ Runs pipeline once and exits.
 #### **Error: `ModuleNotFoundError: No module named 'app'`**
 
 **Solution:**
+
 ```bash
 cd /Users/kevin/Desktop/Ai_agent_trade_claude
 poetry install
@@ -754,6 +941,7 @@ poetry install
 **Cause:** Invalid API credentials
 
 **Solution:**
+
 1. Check `.env` file for correct keys
 2. Verify keys are from **Paper Trading** (not Live)
 3. Regenerate keys if needed
@@ -763,6 +951,7 @@ poetry install
 **Cause:** LangGraph node names conflict with state keys
 
 **Solution:** Already fixed! Nodes renamed to:
+
 - `compute_features` (was `features`)
 - `classify_regime` (was `regime`)
 - `execute_orders` (was `execution`)
@@ -778,6 +967,7 @@ poetry install
 **Cause:** Exceeding free tier limits
 
 **Solution:**
+
 ```env
 # Slow down iterations
 LOOP_INTERVAL_SECONDS=120  # or higher
@@ -786,12 +976,14 @@ LOOP_INTERVAL_SECONDS=120  # or higher
 ### 9.2 Health Check Failures
 
 **Trading Provider Failed:**
+
 1. Check API keys in `.env`
 2. Verify internet connection
 3. Check provider status page
 4. Ensure correct symbol format
 
 **LLM Failed:**
+
 1. Check `GEMINI_API_KEY` in `.env`
 2. Verify API key is active
 3. Check rate limits
@@ -800,12 +992,14 @@ LOOP_INTERVAL_SECONDS=120  # or higher
 ### 9.3 No Trades Executing
 
 **Possible Causes:**
+
 1. Risk limits preventing trades
 2. Neutral signals (no opportunity)
 3. Insufficient portfolio balance
 4. Symbol not supported
 
 **Debug:**
+
 ```bash
 # Check logs for risk rejection
 LOG_LEVEL=DEBUG poetry run python -m app.main
@@ -814,6 +1008,7 @@ LOG_LEVEL=DEBUG poetry run python -m app.main
 ### 9.4 Performance Issues
 
 **System Slow:**
+
 1. Reduce `LOG_LEVEL` to `WARNING`
 2. Increase `LOOP_INTERVAL_SECONDS`
 3. Check internet bandwidth
@@ -827,22 +1022,26 @@ LOG_LEVEL=DEBUG poetry run python -m app.main
 
 #### **1. Additional Trading Strategies**
 
-**Mean Reversion Strategy**
-- Buy oversold, sell overbought
-- Use Bollinger Bands or RSI
-- Best for ranging markets
+##### Mean Reversion Strategy
 
-**Scalping Strategy**
+- ✅ Implemented in Version 1.1
+- Uses RSI and Bollinger Bands
+- Buys oversold, sell overbought
+
+##### Scalping Strategy
+
 - Ultra-short timeframes
 - High frequency trading
 - Capture small price movements
 
-**Breakout Strategy**
+##### Breakout Strategy
+
 - Trade significant price breaks
 - Volume confirmation
 - Support/resistance levels
 
 **Implementation:**
+
 ```python
 # src/app/nodes/mean_reversion_policy.py
 def mean_reversion_strategy_node(state: FullMVPState) -> FullMVPState:
@@ -853,22 +1052,26 @@ def mean_reversion_strategy_node(state: FullMVPState) -> FullMVPState:
 
 #### **2. Advanced Risk Management**
 
-**Portfolio Diversification**
+##### Portfolio Diversification
+
 - Multi-symbol trading
 - Correlation analysis
 - Asset allocation
 
-**Dynamic Position Sizing**
+##### Dynamic Position Sizing
+
 - Kelly Criterion
 - Volatility-based sizing
 - Adaptive to market conditions
 
-**Stop-Loss & Take-Profit**
+##### Stop-Loss & Take-Profit
+
 - Trailing stops
 - Profit targets
 - Break-even stops
 
 **Implementation:**
+
 ```python
 # Enhanced risk_manager.py
 def calculate_kelly_position(win_rate, avg_win, avg_loss):
@@ -879,12 +1082,14 @@ def calculate_kelly_position(win_rate, avg_win, avg_loss):
 #### **3. Backtesting System**
 
 **Features:**
+
 - Historical data replay
 - Strategy comparison
 - Walk-forward analysis
 - Monte Carlo simulation
 
 **Metrics:**
+
 - Sharpe Ratio
 - Sortino Ratio
 - Max Drawdown
@@ -892,6 +1097,7 @@ def calculate_kelly_position(win_rate, avg_win, avg_loss):
 - Profit Factor
 
 **Implementation:**
+
 ```python
 # Expand src/app/utils/backtester.py
 class AdvancedBacktester:
@@ -905,6 +1111,7 @@ class AdvancedBacktester:
 #### **4. Real-time Alerts**
 
 **Notification Channels:**
+
 - Email (SMTP)
 - Slack webhooks
 - SMS (Twilio)
@@ -912,6 +1119,7 @@ class AdvancedBacktester:
 - Telegram bot
 
 **Alert Types:**
+
 - Large position changes
 - Risk limit breaches
 - System errors
@@ -919,6 +1127,7 @@ class AdvancedBacktester:
 - Daily summary
 
 **Implementation:**
+
 ```python
 # src/app/utils/notifications.py
 class AlertManager:
@@ -935,6 +1144,7 @@ class AlertManager:
 #### **5. Web Dashboard**
 
 **Features:**
+
 - Live portfolio view
 - Performance charts
 - Trade history
@@ -942,12 +1152,14 @@ class AlertManager:
 - Configuration editor
 
 **Tech Stack:**
+
 - FastAPI backend (already included)
 - React/Vue frontend
 - WebSocket for real-time updates
 - Chart.js for visualizations
 
 **Implementation:**
+
 ```python
 # src/app/api/dashboard.py
 from fastapi import FastAPI, WebSocket
@@ -968,6 +1180,7 @@ async def websocket_trades(websocket: WebSocket):
 #### **6. Multi-Timeframe Analysis**
 
 Analyze multiple timeframes simultaneously:
+
 - 1-minute (scalping)
 - 5-minute (day trading)
 - 1-hour (swing trading)
@@ -976,12 +1189,14 @@ Analyze multiple timeframes simultaneously:
 #### **7. Sentiment Analysis**
 
 Incorporate news/social sentiment:
+
 - Twitter sentiment
 - Reddit mentions
 - News headlines
 - Fear & Greed Index
 
 **APIs:**
+
 - NewsAPI
 - Twitter API
 - Reddit API
@@ -990,6 +1205,7 @@ Incorporate news/social sentiment:
 #### **8. Machine Learning Models**
 
 Replace/augment rule-based strategies:
+
 - LSTM for price prediction
 - Random Forest for regime classification
 - Reinforcement Learning for trading
@@ -999,6 +1215,7 @@ Replace/augment rule-based strategies:
 #### **9. Portfolio Optimization**
 
 Modern Portfolio Theory:
+
 - Efficient frontier
 - Mean-variance optimization
 - Risk parity
@@ -1008,6 +1225,7 @@ Modern Portfolio Theory:
 #### **10. Order Book Analysis**
 
 Deep order book analysis:
+
 - Liquidity analysis
 - Market depth
 - Large order detection
@@ -1018,12 +1236,14 @@ Deep order book analysis:
 #### **11. Cloud Deployment**
 
 **Kubernetes:**
+
 - Already have manifests in `k8s/`
 - Need CI/CD pipeline
 - Auto-scaling
 - Health checks
 
 **Terraform:**
+
 - Infrastructure as code
 - Multi-cloud support
 - State management
@@ -1031,6 +1251,7 @@ Deep order book analysis:
 #### **12. Database Integration**
 
 Store historical data:
+
 - PostgreSQL for trades
 - InfluxDB for time-series
 - Redis for caching
@@ -1038,6 +1259,7 @@ Store historical data:
 #### **13. Multi-Account Support**
 
 Manage multiple trading accounts:
+
 - Different strategies per account
 - Portfolio aggregation
 - Unified reporting
@@ -1045,6 +1267,7 @@ Manage multiple trading accounts:
 #### **14. Paper Trading Simulator**
 
 Custom simulator (not Alpaca):
+
 - No API limits
 - Instant execution
 - Custom market conditions
@@ -1053,6 +1276,7 @@ Custom simulator (not Alpaca):
 #### **15. Tax Reporting**
 
 Automated tax calculations:
+
 - Capital gains/losses
 - Wash sale detection
 - Form 8949 generation
@@ -1061,24 +1285,28 @@ Automated tax calculations:
 ### 10.4 Implementation Roadmap
 
 **Phase 1 (1-2 months):**
+
 - [ ] Mean reversion strategy
 - [ ] Advanced risk management
 - [ ] Basic backtesting
 - [ ] Email alerts
 
 **Phase 2 (3-4 months):**
+
 - [ ] Web dashboard
 - [ ] Multi-timeframe analysis
 - [ ] Stop-loss/take-profit
 - [ ] Performance analytics
 
 **Phase 3 (5-6 months):**
+
 - [ ] Machine learning models
 - [ ] Sentiment analysis
 - [ ] Portfolio optimization
 - [ ] Database integration
 
 **Phase 4 (6+ months):**
+
 - [ ] Cloud deployment
 - [ ] Multi-account support
 - [ ] Tax reporting
@@ -1091,18 +1319,21 @@ Automated tax calculations:
 ### 11.1 Technical Indicators
 
 #### **EMA (Exponential Moving Average)**
-```
+
+```text
 EMA_today = (Price_today × K) + (EMA_yesterday × (1 - K))
 where K = 2 / (N + 1)
 ```
 
 **Usage:**
+
 - EMA(9): Fast-moving average
 - EMA(50): Slow-moving average
 - Crossover signals trend changes
 
 #### **ATR (Average True Range)**
-```
+
+```text
 TR = max(High - Low, |High - Close_prev|, |Low - Close_prev|)
 ATR = EMA(TR, period)
 ```
@@ -1110,21 +1341,24 @@ ATR = EMA(TR, period)
 **Usage:** Measures volatility
 
 #### **Realized Volatility**
-```
+
+```text
 RV = std(log_returns) × sqrt(252)  # Annualized
 ```
 
 **Usage:** Risk assessment
 
 #### **Orderbook Imbalance**
-```
+
+```text
 Imbalance = (Bid_volume - Ask_volume) / (Bid_volume + Ask_volume)
 ```
 
 **Range:** -1 (sell pressure) to +1 (buy pressure)
 
 #### **VWAP (Volume Weighted Average Price)**
-```
+
+```text
 VWAP = Σ(Price × Volume) / Σ(Volume)
 ```
 
@@ -1143,11 +1377,13 @@ VWAP = Σ(Price × Volume) / Σ(Volume)
 ### 11.3 Signal Types
 
 **Direction:**
+
 - `LONG`: Buy signal
 - `SHORT`: Sell signal
 - `NEUTRAL`: No trade
 
 **Attributes:**
+
 - `strength`: 0.0-1.0 (signal conviction)
 - `confidence`: 0.0-1.0 (AI confidence)
 - `reasoning`: Explanation string
@@ -1155,10 +1391,12 @@ VWAP = Σ(Price × Volume) / Σ(Volume)
 ### 11.4 Order Types
 
 **Supported:**
+
 - `MARKET`: Execute at current price
 - `LIMIT`: Execute at specified price or better
 
 **Future:**
+
 - `STOP_LOSS`: Trigger market order at stop price
 - `TAKE_PROFIT`: Trigger market order at profit target
 - `TRAILING_STOP`: Dynamic stop that follows price
@@ -1166,35 +1404,44 @@ VWAP = Σ(Price × Volume) / Σ(Volume)
 ### 11.5 Risk Metrics
 
 **Maximum Position Size:**
+
 - Absolute: e.g., 0.01 BTC
 - Percentage: e.g., 10% of portfolio
 
 **Maximum Drawdown:**
+
 - Peak-to-trough decline
 - Triggers system halt if exceeded
 
 **Daily Loss Limit:**
+
 - Cumulative losses in one day
 - Resets at midnight UTC
 
 ### 11.6 Performance Metrics
 
 **Sharpe Ratio:**
-```
+
+```text
 Sharpe = (Return - RiskFreeRate) / StdDev(Return)
 ```
+
 **Interpretation:** >1 good, >2 excellent
 
 **Win Rate:**
-```
+
+```text
 WinRate = Winning_Trades / Total_Trades
 ```
+
 **Typical:** 40-60%
 
 **Profit Factor:**
-```
+
+```text
 PF = Gross_Profit / Gross_Loss
 ```
+
 **Interpretation:** >1.5 good
 
 ### 11.7 State Schema Reference
@@ -1306,6 +1553,7 @@ WebSocket /ws/live
 ### 11.9 Environment Best Practices
 
 **Development:**
+
 ```env
 TRADING_PROVIDER=alpaca
 TESTNET=true
@@ -1315,6 +1563,7 @@ MAX_ITERATIONS=10
 ```
 
 **Staging:**
+
 ```env
 TRADING_PROVIDER=alpaca
 TESTNET=true
@@ -1324,6 +1573,7 @@ TIME_LIMIT_HOURS=24
 ```
 
 **Production:**
+
 ```env
 TRADING_PROVIDER=binance  # Or alpaca
 TESTNET=false  # USE WITH CAUTION
@@ -1336,6 +1586,7 @@ ENABLE_BACKTESTING=false
 ### 11.10 Security Best Practices
 
 1. **Never commit `.env` files**
+
    ```bash
    # .gitignore
    .env
@@ -1382,22 +1633,26 @@ ENABLE_BACKTESTING=false
 ### 12.2 Useful Links
 
 **Documentation:**
-- LangGraph: https://langchain-ai.github.io/langgraph/
-- Alpaca Docs: https://docs.alpaca.markets/
-- Binance API: https://binance-docs.github.io/apidocs/
-- Gemini API: https://ai.google.dev/docs
+
+- LangGraph: <https://langchain-ai.github.io/langgraph/>
+- Alpaca Docs: <https://docs.alpaca.markets/>
+- Binance API: <https://binance-docs.github.io/apidocs/>
+- Gemini API: <https://ai.google.dev/docs>
 
 **Trading Platforms:**
-- Alpaca Paper: https://app.alpaca.markets/paper/dashboard/overview
-- Binance Testnet: https://testnet.binance.vision/
+
+- Alpaca Paper: <https://app.alpaca.markets/paper/dashboard/overview>
+- Binance Testnet: <https://testnet.binance.vision/>
 
 **API Keys:**
-- Alpaca: https://app.alpaca.markets/paper/dashboard/overview
-- Gemini AI: https://ai.google.dev/
+
+- Alpaca: <https://app.alpaca.markets/paper/dashboard/overview>
+- Gemini AI: <https://ai.google.dev/>
 
 ### 12.3 Support
 
 For issues or questions:
+
 1. Check this documentation
 2. Review logs with `LOG_LEVEL=DEBUG`
 3. Run health checks
@@ -1414,7 +1669,8 @@ For issues or questions:
 
 ### 12.6 Changelog
 
-**Version 1.0 (November 2025)**
+#### Version 1.0 (November 2025)
+
 - ✅ Initial release
 - ✅ Multi-provider support (Alpaca, Binance)
 - ✅ Gemini LLM integration
@@ -1423,11 +1679,21 @@ For issues or questions:
 - ✅ Risk management
 - ✅ Comprehensive documentation
 
-**Planned for Version 1.1**
-- Mean reversion strategy
+#### Version 1.1 (December 2025)
+
+- ✅ Added Mean Reversion Strategy (RSI + Bollinger Bands)
+- ✅ Added Hedge Agent for portfolio protection
+- ✅ Added Smart Execution (Limit orders + Fallback)
+- ✅ Added Kotak Neo integration (Beta)
+- ✅ Enhanced Risk Management (Volatility sizing, ATR stops)
+- ✅ Updated Graph Architecture
+
+#### Planned for Version 1.2
+
 - Advanced backtesting
 - Email alerts
 - Performance dashboard
+- Multi-timeframe analysis
 
 ---
 
@@ -1480,11 +1746,25 @@ LOG_LEVEL=INFO
 ❌ Errors detected  
 🔄 Processing...  
 
+### 11.2 Helper Scripts
+
+The `scripts/` directory contains several utilities for data management and testing:
+
+- **`run_backtest.py`**: The main backtesting CLI. Supports visual output and custom data loading.
+- **`run_paper_trade.py`**: A specialized runner for the 15-minute strategy loop, ideal for paper trading.
+- **`convert_nifty_data.py`**: Helper to clean and format Nifty 50 data for backtesting.
+- **`fetch_data.py`**: Utility to download historical data from Binance Mainnet.
+- **`fetch_gap_data.py`**: Utility to analyze price gaps.
+- **`analyze_ofi.py`**: Script to analyze Order Flow Imbalance features.
+- **`download_trades.py`**: Helper to download trade history.
+- **`reconstruct_orderbook.py`**: Tool to rebuild orderbooks from depth updates (for LOB simulation).
+- **`verify_setup.sh`**: Shell script to check if the environment and dependencies are correctly set up.
+- **`quickstart.py`**: Interactive wizard to generate the `.env` configuration file.
+
 ---
 
 **End of Master Documentation**
 
-*Last Updated: November 17, 2025*  
-*Version: 1.0*  
+*Last Updated: December 4, 2025*  
+*Version: 1.1*  
 *Status: Production Ready*
-

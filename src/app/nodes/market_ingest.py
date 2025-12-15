@@ -1,6 +1,8 @@
 """Market data ingestion node."""
 from typing import TypedDict
 from datetime import datetime
+from datetime import datetime
+import pandas as pd
 import csv
 from pathlib import Path
 
@@ -39,7 +41,40 @@ async def ingest_market_data_node(state: IngestState) -> IngestState:
         trades = await trading_provider.get_recent_trades(symbol, limit=100)
 
         # Fetch recent klines
-        klines = await trading_provider.get_klines(symbol, interval="1m", limit=100)
+        # Fetch recent klines (Fetch enough to resample)
+        klines_1m = await trading_provider.get_klines(symbol, interval="1m", limit=1000)
+        
+        # --- Resampling Logic (1m -> 15m) ---
+        klines = []
+        if len(klines_1m) > 0:
+            df_m1 = pd.DataFrame([k.dict() for k in klines_1m])
+            df_m1['timestamp'] = pd.to_datetime(df_m1['timestamp'])
+            df_m1.set_index('timestamp', inplace=True)
+            
+            ohlc_dict = {
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }
+            df_m15 = df_m1.resample('15min').agg(ohlc_dict).dropna()
+            
+            # Convert back to KlineEvents for Strategy
+            for ts, row in df_m15.iterrows():
+                 klines.append(KlineEvent(
+                     timestamp=ts,
+                     symbol=symbol,
+                     interval="15m",
+                     open=row['open'],
+                     high=row['high'],
+                     low=row['low'],
+                     close=row['close'],
+                     volume=row['volume']
+                 ))
+            print(f"Resampled {len(klines_1m)} M1 -> {len(klines)} M15 candles")
+        else:
+            print("Warning: No klines fetched.")
 
         return {
             "trades": trades,

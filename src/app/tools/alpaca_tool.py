@@ -4,10 +4,10 @@ from typing import Optional
 
 try:
     from alpaca.trading.client import TradingClient
-    from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
-    from alpaca.trading.enums import OrderSide, TimeInForce, OrderType
+    from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, StopLossRequest, TakeProfitRequest
+    from alpaca.trading.enums import OrderSide, TimeInForce, OrderType, OrderClass
     from alpaca.data.historical import StockHistoricalDataClient, CryptoHistoricalDataClient
-    from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest, StockTradesRequest, CryptoTradesRequest
+    from alpaca.data.requests import StockBarsRequest, CryptoBarsRequest, StockTradesRequest, CryptoTradesRequest, CryptoSnapshotRequest, StockSnapshotRequest
     from alpaca.data.timeframe import TimeFrame
     ALPACA_AVAILABLE = True
 except ImportError:
@@ -19,6 +19,7 @@ except ImportError:
 from app.config import settings
 from app.schemas.events import TradeEvent, OrderbookUpdate, KlineEvent
 from app.schemas.models import Order, ExecutionResult, PortfolioState, Position
+from app.utils.resilience import api_retry_policy
 
 
 class AlpacaTool:
@@ -83,17 +84,41 @@ class AlpacaTool:
     async def get_orderbook(self, symbol: str, limit: int = 20) -> OrderbookUpdate:
         """Fetch current orderbook snapshot.
 
-        Note: Alpaca doesn't provide direct orderbook access.
-        This is a simplified implementation using recent trades and quotes.
+        Strategy:
+        1. Try Real Snapshot (L1 Best Bid/Ask) - Preferred
+        2. Fallback to Synthetic from Bars (Approximation) - If Snapshot fails
         """
         alpaca_symbol = self._convert_symbol(symbol)
-
-        # For Alpaca, we'll create a synthetic orderbook from recent data
-        # This is a limitation of the Alpaca API compared to Binance
+        
+        # 1. Try Real Snapshot (Best Bid/Ask)
         try:
-            # Get latest quote for bid/ask spread
             if self.is_crypto:
-                # Use latest bars as proxy
+                request = CryptoSnapshotRequest(symbol_or_symbols=[alpaca_symbol])
+                snapshot = self.data_client.get_crypto_snapshot(request) # type: ignore
+                data = snapshot[alpaca_symbol]
+                quote = data.latest_quote
+            else:
+                request = StockSnapshotRequest(symbol_or_symbols=[alpaca_symbol])
+                snapshot = self.data_client.get_stock_snapshot(request) # type: ignore
+                data = snapshot[alpaca_symbol]
+                quote = data.latest_quote
+
+            if quote and quote.bid_price and quote.ask_price:
+                 return OrderbookUpdate(
+                    timestamp=datetime.now(),
+                    symbol=symbol,
+                    bids=[(float(quote.bid_price), float(quote.bid_size))],
+                    asks=[(float(quote.ask_price), float(quote.ask_size))]
+                 )
+            # If no quote, fall through to synthetic
+            print(f"No quote data for {symbol}, falling back to synthetic...")
+            
+        except Exception as e:
+            print(f"Snapshot fetch failed ({e}), falling back to synthetic...")
+
+        # 2. Synthetic Fallback (Old Logic)
+        try:
+            if self.is_crypto:
                 request = CryptoBarsRequest(
                     symbol_or_symbols=[alpaca_symbol],
                     timeframe=TimeFrame.Minute,
@@ -102,7 +127,6 @@ class AlpacaTool:
                 bars = self.data_client.get_crypto_bars(request)  # type: ignore
                 bar_data = bars[alpaca_symbol][0]
 
-                # Create synthetic orderbook around current price
                 mid_price = (bar_data.high + bar_data.low) / 2
                 spread = (bar_data.high - bar_data.low) / 2
 
@@ -129,7 +153,7 @@ class AlpacaTool:
                 asks=asks
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to fetch orderbook data: {e}")
+            raise RuntimeError(f"Failed to fetch orderbook (Real & Synthetic both failed): {e}")
 
     async def get_recent_trades(self, symbol: str, limit: int = 100) -> list[TradeEvent]:
         """Fetch recent trades."""
@@ -237,6 +261,7 @@ class AlpacaTool:
         except Exception as e:
             raise RuntimeError(f"Failed to fetch klines: {e}")
 
+    @api_retry_policy()
     async def execute_order(self, order: Order) -> ExecutionResult:
         """Execute an order on Alpaca (paper trading)."""
         if not self.trading_client:
@@ -250,28 +275,96 @@ class AlpacaTool:
 
             # Create order request based on type
             if order.order_type == "MARKET":
-                order_request = MarketOrderRequest(
-                    symbol=alpaca_symbol,
-                    qty=order.quantity,
-                    side=side,
-                    time_in_force=TimeInForce.GTC
-                )
+                # Check for bracket order params
+                req_params = {
+                    "symbol": alpaca_symbol,
+                    "qty": order.quantity,
+                    "side": side,
+                    "time_in_force": TimeInForce.GTC
+                }
+                
+                if order.stop_loss and order.take_profit:
+                    req_params["order_class"] = OrderClass.BRACKET
+                    req_params["stop_loss"] = StopLossRequest(stop_price=order.stop_loss)
+                    req_params["take_profit"] = TakeProfitRequest(limit_price=order.take_profit)
+                
+                order_request = MarketOrderRequest(**req_params)
+
             elif order.order_type == "LIMIT":
                 if order.price is None:
                     raise ValueError("LIMIT order requires price")
-                order_request = LimitOrderRequest(
-                    symbol=alpaca_symbol,
-                    qty=order.quantity,
-                    side=side,
-                    time_in_force=TimeInForce.GTC,
-                    limit_price=order.price
-                )
+                
+                req_params = {
+                    "symbol": alpaca_symbol,
+                    "qty": order.quantity,
+                    "side": side,
+                    "time_in_force": TimeInForce.GTC,
+                    "limit_price": order.price
+                }
+
+                if order.stop_loss and order.take_profit:
+                    req_params["order_class"] = OrderClass.BRACKET
+                    req_params["stop_loss"] = StopLossRequest(stop_price=order.stop_loss)
+                    req_params["take_profit"] = TakeProfitRequest(limit_price=order.take_profit)
+
+                order_request = LimitOrderRequest(**req_params)
             else:
                 raise ValueError(f"Unsupported order type: {order.order_type}")
 
             # Submit order
             alpaca_order = self.trading_client.submit_order(order_request)
 
+            return ExecutionResult(
+                success=True,
+                order_id=str(alpaca_order.id),
+                filled_quantity=float(alpaca_order.filled_qty or 0),
+                filled_price=float(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else None,
+                status=str(alpaca_order.status),
+                timestamp=datetime.now()
+            )
+        except Exception as e:
+            return ExecutionResult(
+                success=False,
+                status="ERROR",
+                error_message=str(e),
+                timestamp=datetime.now()
+            )
+
+    async def cancel_order(self, order_id: str, symbol: str) -> ExecutionResult:
+        """Cancel an open order on Alpaca."""
+        if not self.trading_client:
+            raise RuntimeError("Client not initialized")
+
+        try:
+            self.trading_client.cancel_order_by_id(order_id)
+            
+            # Fetch updated status
+            alpaca_order = self.trading_client.get_order_by_id(order_id)
+            
+            return ExecutionResult(
+                success=True,
+                order_id=str(alpaca_order.id),
+                filled_quantity=float(alpaca_order.filled_qty or 0),
+                filled_price=float(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else None,
+                status=str(alpaca_order.status),
+                timestamp=datetime.now()
+            )
+        except Exception as e:
+            return ExecutionResult(
+                success=False,
+                status="ERROR",
+                error_message=str(e),
+                timestamp=datetime.now()
+            )
+
+    async def get_order_status(self, order_id: str, symbol: str) -> ExecutionResult:
+        """Get order status from Alpaca."""
+        if not self.trading_client:
+            raise RuntimeError("Client not initialized")
+
+        try:
+            alpaca_order = self.trading_client.get_order_by_id(order_id)
+            
             return ExecutionResult(
                 success=True,
                 order_id=str(alpaca_order.id),

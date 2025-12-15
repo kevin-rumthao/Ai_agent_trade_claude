@@ -21,6 +21,7 @@ from app.nodes.momentum_policy import momentum_strategy_node
 from app.nodes.mean_reversion_policy import mean_reversion_strategy_node
 from app.nodes.risk_manager import risk_management_node
 from app.nodes.execution_agent import execution_agent_node
+from app.nodes.hedge_agent import hedge_agent_node
 
 
 class FullMVPState(TypedDict):
@@ -40,7 +41,7 @@ class FullMVPState(TypedDict):
     selected_strategy: Literal["momentum", "mean_reversion", "neutral"] | None
 
     # Signal
-    signal: Signal | None
+    signals: list[Signal]
 
     # Risk management
     portfolio: PortfolioState | None
@@ -74,7 +75,7 @@ def neutral_strategy_node(state: FullMVPState) -> FullMVPState:
 
     return {
         **state,
-        "signal": signal
+        "signals": [signal]
     }
 
 
@@ -97,6 +98,7 @@ def create_full_mvp_graph() -> StateGraph:
     workflow.add_node("momentum", momentum_strategy_node)
     workflow.add_node("mean_reversion", mean_reversion_strategy_node)
     workflow.add_node("neutral", neutral_strategy_node)
+    workflow.add_node("hedge_agent", hedge_agent_node)
     workflow.add_node("risk_check", risk_management_node)
     workflow.add_node("execute_orders", execution_agent_node)
 
@@ -117,10 +119,13 @@ def create_full_mvp_graph() -> StateGraph:
         }
     )
 
-    # All strategies flow to risk management
-    workflow.add_edge("momentum", "risk_check")
-    workflow.add_edge("mean_reversion", "risk_check")
-    workflow.add_edge("neutral", "risk_check")
+    # All strategies flow to hedge agent
+    workflow.add_edge("momentum", "hedge_agent")
+    workflow.add_edge("mean_reversion", "hedge_agent")
+    workflow.add_edge("neutral", "hedge_agent")
+
+    # Hedge agent to risk management
+    workflow.add_edge("hedge_agent", "risk_check")
 
     # Risk to execution to end
     workflow.add_edge("risk_check", "execute_orders")

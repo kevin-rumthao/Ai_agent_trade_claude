@@ -70,3 +70,8 @@ node_modules/
 # Poetry virtualenvs
 .poetry/
 
+
+# Data & Results
+data/
+results/
+docs/

@@ -25,6 +25,11 @@ alpaca-py = "^0.20.0"
 pandas = "^2.1.0"
 numpy = "^1.26.0"
 python-dotenv = "^1.0.0"
+rich = "^13.0.0"
+tenacity = "^8.2.0"
+pandas-ta = "^0.3.14b"
+statsmodels = "^0.14.0"
+arch = "^6.3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

@@ -4,6 +4,11 @@ import google.generativeai as genai
 
 from app.config import settings
 from app.schemas.models import MarketFeatures, MarketRegime
+from app.schemas.llm import GeminiRegimeResponse
+import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class LLMTool:
@@ -46,47 +51,44 @@ Spread: {features.spread}
 
 The rule-based classifier has ambiguity score of {ambiguity_score:.2f}.
 
-Respond in this exact format:
-REGIME: <regime_name>
-CONFIDENCE: <0.0-1.0>
-REASONING: <brief explanation>"""
+OUTPUT IN JSON FORMAT ONLY.
+{{
+    "regime": "enum(TRENDING, RANGING, HIGH_VOLATILITY, LOW_VOLATILITY, UNKNOWN)",
+    "confidence": 0.0-1.0,
+    "reasoning": "string"
+}}"""
 
         # Combine system and user messages
         full_prompt = f"{system_prompt}\n\n{user_message}"
 
         # Generate response using Gemini
-        response = self.model.generate_content(full_prompt)
-        content = response.text
+        try:
+            response = self.model.generate_content(full_prompt)
+            content = response.text
+            
+            # Clean markdown code blocks if present
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                 content = content.split("```")[1].split("```")[0]
 
-        regime_str = "UNKNOWN"
-        confidence = 0.5
-
-        if isinstance(content, str):
-            lines = content.strip().split("\n")
-            for line in lines:
-                if line.upper().startswith("REGIME:"):
-                    regime_str = line.split(":", 1)[1].strip()
-                elif line.upper().startswith("CONFIDENCE:"):
-                    try:
-                        confidence = float(line.split(":", 1)[1].strip())
-                    except ValueError:
-                        confidence = 0.5
-
-        regime_map = {
-            "TRENDING": "TRENDING",
-            "RANGING": "RANGING",
-            "HIGH_VOLATILITY": "HIGH_VOLATILITY",
-            "LOW_VOLATILITY": "LOW_VOLATILITY",
-            "UNKNOWN": "UNKNOWN",
-        }
-
-        regime = regime_map.get(regime_str.upper(), "UNKNOWN")
-
-        return MarketRegime(
-            regime=regime,  # type: ignore[arg-type]
-            confidence=max(0.0, min(1.0, confidence)),
-            timestamp=features.timestamp,
-        )
+            data = json.loads(content)
+            validated = GeminiRegimeResponse(**data)
+            
+            return MarketRegime(
+                regime=validated.regime,
+                confidence=validated.confidence,
+                timestamp=features.timestamp,
+                # Store reasoning somehow if needed, but MarketRegime model doesn't have it yet.
+                # Ignoring reasoning for now or logging it.
+            )
+        except Exception as e:
+            logger.error(f"LLM Parse Error: {e}")
+            return MarketRegime(
+                regime="UNKNOWN", 
+                confidence=0.0,
+                timestamp=features.timestamp
+            )
 
     async def get_trading_advice(
         self,

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 try:
-    from binance.client import AsyncClient  # type: ignore
+    from binance.async_client import AsyncClient  # type: ignore
     from binance.exceptions import BinanceAPIException  # type: ignore
 except Exception:  # pragma: no cover - test stub path
     AsyncClient = object  # type: ignore
@@ -14,6 +14,7 @@ except Exception:  # pragma: no cover - test stub path
 from app.config import settings
 from app.schemas.events import TradeEvent, OrderbookUpdate, KlineEvent
 from app.schemas.models import Order, ExecutionResult, PortfolioState, Position
+from app.utils.resilience import api_retry_policy
 
 
 class BinanceTool:
@@ -88,18 +89,27 @@ class BinanceTool:
         self,
         symbol: str,
         interval: str = "1m",
-        limit: int = 100
+        limit: int = 1000,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
     ) -> list[KlineEvent]:
         """Fetch historical klines/candlesticks."""
         if not self.client:
             raise RuntimeError("Client not initialized")
 
         try:
-            klines = await self.client.get_klines(
-                symbol=symbol,
-                interval=interval,
-                limit=limit
-            )
+            # Prepare kwargs
+            kwargs = {
+                "symbol": symbol,
+                "interval": interval,
+                "limit": limit
+            }
+            if start_time:
+                kwargs["startTime"] = int(start_time.timestamp() * 1000)
+            if end_time:
+                kwargs["endTime"] = int(end_time.timestamp() * 1000)
+
+            klines = await self.client.get_klines(**kwargs)
 
             return [
                 KlineEvent(
@@ -118,6 +128,7 @@ class BinanceTool:
         except BinanceAPIException as e:
             raise RuntimeError(f"Failed to fetch klines: {e}")
 
+    @api_retry_policy()
     async def execute_order(self, order: Order) -> ExecutionResult:
         """Execute an order on the exchange."""
         if not self.client:
@@ -156,6 +167,60 @@ class BinanceTool:
             return ExecutionResult(
                 success=False,
                 status="FAILED",
+                error_message=str(e),
+                timestamp=datetime.now()
+            )
+
+    async def cancel_order(self, order_id: str, symbol: str) -> ExecutionResult:
+        """Cancel an open order on Binance."""
+        if not self.client:
+            raise RuntimeError("Client not initialized")
+
+        try:
+            result = await self.client.cancel_order(
+                symbol=symbol,
+                orderId=order_id
+            )
+            
+            return ExecutionResult(
+                success=True,
+                order_id=str(result['orderId']),
+                filled_quantity=float(result.get('executedQty', 0)),
+                filled_price=float(result.get('price', 0)) if float(result.get('price', 0)) > 0 else None,
+                status=result['status'],
+                timestamp=datetime.now()
+            )
+        except BinanceAPIException as e:
+            return ExecutionResult(
+                success=False,
+                status="ERROR",
+                error_message=str(e),
+                timestamp=datetime.now()
+            )
+
+    async def get_order_status(self, order_id: str, symbol: str) -> ExecutionResult:
+        """Get order status from Binance."""
+        if not self.client:
+            raise RuntimeError("Client not initialized")
+
+        try:
+            result = await self.client.get_order(
+                symbol=symbol,
+                orderId=order_id
+            )
+            
+            return ExecutionResult(
+                success=True,
+                order_id=str(result['orderId']),
+                filled_quantity=float(result.get('executedQty', 0)),
+                filled_price=float(result.get('price', 0)) if float(result.get('price', 0)) > 0 else None,
+                status=result['status'],
+                timestamp=datetime.now()
+            )
+        except BinanceAPIException as e:
+            return ExecutionResult(
+                success=False,
+                status="ERROR",
                 error_message=str(e),
                 timestamp=datetime.now()
             )

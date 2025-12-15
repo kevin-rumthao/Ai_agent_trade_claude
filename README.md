@@ -5,6 +5,7 @@ This project implements a **modular, event‑driven trading agent** built on **L
 > Market Ingest → Feature Engineering → Regime Classification → Strategy Router → [Momentum / Mean Reversion] → Risk Manager → Execution Agent
 
 The system supports **multiple trading backends**:
+
 - **Binance** (testnet/mainnet for crypto)
 - **Alpaca** (paper trading for stocks and crypto)
 
@@ -38,28 +39,37 @@ It's designed to support **backtesting** and **simulation** via a LOB simulator 
   - `strategy_router.py` – route to momentum / mean reversion / neutral strategy.
   - `momentum_policy.py` – EMA‑crossover momentum strategy.
   - `mean_reversion_policy.py` – RSI + Bollinger Bands mean reversion strategy.
+  - `hedge_agent.py` – hedge spot positions with futures.
   - `risk_manager.py` – risk checks + position sizing.
   - `execution_agent.py` – place orders via Binance tool.
+  - `data_sanitizer.py` – data integrity filter.
 - `src/app/schemas/` – Pydantic models for events (`TradeEvent`, `OrderbookUpdate`, `KlineEvent`) and domain models (`MarketFeatures`, `Signal`, `Order`, `PortfolioState`, etc.).
 - `src/app/tools/`
   - `binance_tool.py` – async Binance client wrapper.
-  - `llm_tool.py` – Anthropic LLM wrapper for regime classification / advice.
-- `src/app/utils/`
-  - `backtester.py` – simple backtesting engine driven by strategy signals.
-  - `lob_simulator.py` – limit order book simulator.
-  - `metrics.py` – Sharpe / max drawdown / win‑rate and other metrics.
-- `src/tests/` – minimal tests for ingest, features, momentum policy, and execution agent.
-
-- `src/app/tools/`
-  - `binance_tool.py` – async Binance client wrapper.
   - `alpaca_tool.py` – Alpaca paper trading client wrapper.
+  - `kotak_neo_tool.py` – Kotak Neo API wrapper (Experimental).
   - `trading_provider.py` – abstraction layer for switching between providers.
   - `llm_tool.py` – Google Gemini LLM wrapper for regime classification / advice.
+  - `mock_tool.py` – simulation tool.
 - `src/app/utils/`
   - `backtester.py` – simple backtesting engine driven by strategy signals.
   - `lob_simulator.py` – limit order book simulator.
   - `metrics.py` – Sharpe / max drawdown / win‑rate and other metrics.
-- `src/tests/` – minimal tests for ingest, features, momentum policy, and execution agent.
+  - `persistence.py` – state persistence.
+  - `resilience.py` – API retry logic.
+  - `statistics.py` – statistical calculations.
+- `src/tests/` – minimal tests for ingest, features, strategies, and execution agent.
+- `scripts/`
+  - `run_backtest.py` – main backtesting CLI.
+  - `run_paper_trade.py` – specialized 15m strategy runner.
+  - `convert_nifty_data.py` – Nifty data formatter.
+  - `fetch_data.py` – historical data fetcher.
+  - `fetch_gap_data.py` – gap analysis utility.
+  - `analyze_ofi.py` – OFI analysis utility.
+  - `download_trades.py` – trade history downloader.
+  - `reconstruct_orderbook.py` – LOB reconstruction utility.
+  - `verify_setup.sh` – environment verification.
+  - `quickstart.py` – interactive setup wizard.
 
 ---
 
@@ -69,6 +79,7 @@ It's designed to support **backtesting** and **simulation** via a LOB simulator 
 - Recommended: **Poetry** for dependency management
 
 Python dependencies are defined in `pyproject.toml` including:
+
 - LangGraph, LangChain
 - Pydantic v2
 - `python-binance` (for Binance support)
@@ -89,6 +100,7 @@ poetry run python scripts/quickstart.py
 ```
 
 This will guide you through:
+
 - Choosing a trading provider (Alpaca or Binance)
 - Entering API credentials
 - Setting risk parameters
@@ -119,19 +131,22 @@ pip install -e .
 
 ### 4.2 Get API Credentials
 
-#### For Alpaca Paper Trading (Recommended for Testing):
-1. Go to https://alpaca.markets/
+#### For Alpaca Paper Trading (Recommended for Testing)
+
+1. Go to <https://alpaca.markets/>
 2. Sign up for a free account
 3. Navigate to Paper Trading dashboard
 4. Copy your API Key and Secret Key
 
-#### For Binance (Crypto Trading):
-1. Go to https://testnet.binance.vision/ (testnet) or binance.com (mainnet)
+#### For Binance (Crypto Trading)
+
+1. Go to <https://testnet.binance.vision/> (testnet) or binance.com (mainnet)
 2. Create API keys
 3. Enable spot trading permissions
 
-#### For Gemini LLM:
-1. Go to https://ai.google.dev/
+#### For Gemini LLM
+
+1. Go to <https://ai.google.dev/>
 2. Get your Gemini API key
 
 ### 4.3 Environment Variables
@@ -163,9 +178,10 @@ LOG_LEVEL="INFO"
 ```
 
 **Important Notes:**
+
 - **Alpaca** always uses paper trading (safe for testing)
 - **Binance** can use testnet (safe) or mainnet (real money) - set `TESTNET=true` for safety
-- Symbol formats differ: 
+- Symbol formats differ:
   - Alpaca: `BTCUSD` (crypto), `AAPL` (stocks)
   - Binance: `BTCUSDT` (crypto)
 
@@ -180,13 +196,15 @@ poetry run python -m app.healthcheck
 ```
 
 This will verify:
+
 - ✅ Trading provider connectivity (Binance or Alpaca)
 - ✅ Market data access
 - ✅ Portfolio state retrieval
 - ✅ Gemini LLM connectivity
 
 Expected output:
-```
+
+```bash
 Running external health checks (ALPACA, Gemini)...
 ✅ All health checks passed
 {'trading_provider': {'provider': 'alpaca', 'symbol': 'BTCUSD', 'ok': True, ...}, 'llm': {'model': 'gemini-1.5-pro', 'ok': True, ...}}
@@ -205,6 +223,7 @@ poetry run python -m app.main
 ```
 
 The system will:
+
 1. Run health checks on all APIs
 2. Initialize the trading provider
 3. Compile the LangGraph trading pipeline
@@ -233,6 +252,7 @@ TESTNET=false
 ### 5.3 Monitor Trading Activity
 
 The system logs all activity including:
+
 - Market data ingestion
 - Feature calculations
 - Regime classification (with LLM reasoning)
@@ -240,8 +260,31 @@ The system logs all activity including:
 - Risk checks
 - Order execution results
 
-Example output:
+### 5.4 Interactive Dashboard
+
+The system includes a rich CLI dashboard for monitoring and control:
+
+```bash
+poetry run python -m app.control
 ```
+
+*Features: Live Trading Arena, Training Dojo (Backtesting), Hall of Fame (Stats)*
+
+### 5.5 Backtesting
+
+```bash
+# Basic Momentum Backtest (Last 7 Days)
+poetry run python scripts/run_backtest.py --days 7 --strategy momentum
+
+# Visual Backtest (Recommended)
+poetry run python scripts/run_backtest.py --days 7 --strategy momentum --visual
+```
+
+See `MASTER_DOCUMENTATION.md` for full backtesting reference.
+
+Example output:
+
+```bash
 2025-11-16 10:30:00 - INFO - Connected to ALPACA (PAPER TRADING)
 2025-11-16 10:30:05 - INFO - Trading Loop Iteration 1
 2025-11-16 10:30:06 - INFO - Price: 43250.50
@@ -289,6 +332,7 @@ result = await trading_provider.execute_order(order)
 ### 7.2 Health Check System
 
 Before trading starts, the system validates:
+
 - API credentials are correct
 - Market data is accessible
 - Orders can be placed (paper trading mode)
@@ -300,16 +344,14 @@ This prevents runtime failures and wasted time.
 
 The trading logic is implemented as a directed graph:
 
-```
-Market Ingest → Feature Engineering → Regime Classifier
-                                            ↓
-                                    Strategy Router
-                                            ↓
-                              Momentum Policy (or other strategies)
-                                            ↓
-                                      Risk Manager
-                                            ↓
-                                    Execution Agent
+```mermaid
+graph TD
+    Ingest[Market Ingest] --> Features[Feature Engineering]
+    Features --> Regime[Regime Classifier]
+    Regime --> Router{Strategy Router}
+    Router --> Momentum[Momentum Policy]
+    Router --> Risk[Risk Manager]
+    Risk --> Exec[Execution Agent]
 ```
 
 Each node is independently testable and can be swapped out.
@@ -353,7 +395,7 @@ Key settings in `.env`:
 
 1. **Test with Paper Trading**: Start with Alpaca paper trading to validate strategy
 2. **Backtest**: Enable backtesting mode with historical data
-3. **Add Strategies**: Implement additional strategies beyond momentum
+3. **Add Strategies**: Implement additional strategies (e.g. Breakout) beyond Momentum and Mean Reversion
 4. **Tune Parameters**: Optimize EMA periods, risk limits, etc.
 5. **Monitor Performance**: Track Sharpe ratio, win rate, drawdown
 6. **Go Live (Carefully)**: Only after extensive testing with paper trading
@@ -481,4 +523,3 @@ Make sure secrets for live integrations are **not** required for CI (tests shoul
 - Add richer monitoring / logging, e.g. Prometheus metrics and dashboards.
 
 This README will evolve as the system grows; contributions and refinements are welcome.
-

@@ -47,6 +47,14 @@ class TradingProvider(Protocol):
         """Fetch current portfolio state."""
         ...
 
+    async def cancel_order(self, order_id: str, symbol: str) -> ExecutionResult:
+        """Cancel an open order."""
+        ...
+
+    async def get_order_status(self, order_id: str, symbol: str) -> ExecutionResult:
+        """Get the status of an order."""
+        ...
+
 
 def get_trading_provider() -> TradingProvider:
     """Factory function to get the configured trading provider.
@@ -61,10 +69,16 @@ def get_trading_provider() -> TradingProvider:
     elif settings.trading_provider == "binance":
         from app.tools.binance_tool import binance_tool
         return binance_tool  # type: ignore
+    elif settings.trading_provider == "kotak_neo":
+        from app.tools.kotak_neo_tool import kotak_neo_tool
+        return kotak_neo_tool  # type: ignore
+    elif settings.trading_provider == "mock":
+        from app.tools.mock_tool import mock_tool
+        return mock_tool # type: ignore
     else:
         raise ValueError(
             f"Unknown trading provider: {settings.trading_provider}. "
-            f"Supported providers: binance, alpaca"
+            f"Supported providers: binance, alpaca, kotak_neo, mock"
         )
 
 

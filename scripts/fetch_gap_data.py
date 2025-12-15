@@ -1,5 +1,5 @@
 """
-Script to fetch historical klines from Binance for backtesting.
+Script to fetch historical klines from Binance for a SPECIFIC DATE RANGE.
 Uses public API endpoints (no keys required).
 """
 import csv
@@ -29,32 +29,20 @@ def fetch_klines(symbol: str, interval: str, start_time: int, end_time: int):
         return []
 
 def main():
-    parser = argparse.ArgumentParser(description="Fetch historical data from Binance")
-    parser.add_argument("--symbol", type=str, default="BTCUSDT", help="Trading symbol")
-    parser.add_argument("--interval", type=str, default="1m", help="Time interval (1m, 1h, 1d)")
-    parser.add_argument("--days", type=int, default=365, help="Number of days to fetch")
-    parser.add_argument("--output", type=str, default=None, help="Output file path")
+    # HARDCODED RANGE FOR THE GAP
+    symbol = "BTCUSDT"
+    interval = "1m"
     
-    args = parser.parse_args()
+    # Range: Nov 26, 2022 to Dec 14, 2024
+    start_dt = datetime(2022, 11, 26)
+    end_dt = datetime(2024, 12, 14)
     
-    # Defaults
-    symbol = args.symbol
-    interval = args.interval
-    days = args.days
-    
-    if args.output:
-        output_file = args.output
-    else:
-        Path("data").mkdir(exist_ok=True)
-        output_file = f"data/{symbol}_{days}d_{interval}.csv"
-    
-    end_dt = datetime.now()
-    start_dt = end_dt - timedelta(days=days)
+    output_file = "data/BTCUSDT_2022_2024_gap.csv"
     
     start_ts = int(start_dt.timestamp() * 1000)
     end_ts = int(end_dt.timestamp() * 1000)
     
-    print(f"Fetching {days} days of {interval} data for {symbol}...")
+    print(f"Fetching GAP data for {symbol}...")
     print(f"Range: {start_dt} -> {end_dt}")
     print(f"Output: {output_file}")
     
@@ -66,12 +54,8 @@ def main():
         klines = fetch_klines(symbol, interval, current_start, end_ts)
         
         if not klines:
-            # If no data returned, strictly we might be at end or error. 
-            # Check if we are past end_ts
             if current_start > end_ts:
                 break
-            # Just advance time a bit if stuck? 
-            # Or break if valid empty range.
             break
             
         all_klines.extend(klines)
@@ -86,14 +70,12 @@ def main():
     print(f"\nFetched {len(all_klines)} klines.")
     
     # Save to CSV
-    # Standard OHLCV columns + simulated bid/ask for compatibility
     with open(output_file, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["timestamp", "symbol", "open", "high", "low", "close", "volume", "bid", "ask"])
         
         for k in all_klines:
-            # Binance kline format:
-            # [0] Open time, [1] Open, [2] High, [3] Low, [4] Close, [5] Volume
+            # Binance kline format
             ts = datetime.fromtimestamp(k[0] / 1000).isoformat()
             open_p = float(k[1])
             high_p = float(k[2])

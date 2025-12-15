@@ -130,9 +130,11 @@ async def run_all_checks() -> dict[str, Any]:
 
     # Run trading provider and LLM checks sequentially; in practice these could be
     # parallelised but sequential keeps logs simpler.
+    print(f"   > Checking Trading Provider ({settings.trading_provider})...")
     trading_result = await check_trading_provider()
     results["trading_provider"] = trading_result
 
+    print(f"   > Checking LLM ({settings.llm_model})...")
     llm_result = await check_llm()
     results["llm"] = llm_result
 
