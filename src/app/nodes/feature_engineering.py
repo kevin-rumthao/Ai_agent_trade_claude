@@ -630,22 +630,7 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
         list(feature_engine.close_buffer), settings.rsi_period
     )
 
-    # Compute Bollinger Bands
-    bb_upper = None
-    bb_mid = None
-    bb_lower = None
-    bb_res = feature_engine.compute_bollinger_bands(
-        list(feature_engine.price_buffer),
-        settings.bollinger_period,
-        settings.bollinger_std_dev
-    )
-    if bb_res:
-        bb_upper, bb_mid, bb_lower = bb_res
-
-    # Compute ADX
-    adx = feature_engine.compute_adx(period=14)
-
-    # Phase 2: Statistical Features
+    # Phase 2: Statistical Features & Volatility Forecast
     # We need a list of closes for these tests
     closes_list = list(feature_engine.close_buffer)
     
@@ -657,11 +642,71 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
     
     # Volatility Forecast (GARCH)
     # Start with simple returns
-    if len(closes_list) > 2:
+    vol_forecast = None
+    if len(closes_list) > 30:
         returns = [(closes_list[i] - closes_list[i-1])/closes_list[i-1] for i in range(1, len(closes_list))]
-        vol_forecast = forecast_volatility(returns)
-    else:
-        vol_forecast = None
+        # Use GARCH if available
+        vol_forecast = forecast_volatility(returns, method='GARCH')
+
+    # Compute Bollinger Bands (Dynamic GARCH Logic)
+    # Default std dev from settings
+    std_dev_mult = settings.bollinger_std_dev
+    
+    # If GARCH predicts higher volatility than realized, widen the bands
+    if vol_forecast is not None and realized_vol is not None and realized_vol > 0:
+        # Scale factor = Predicted / Historical
+        # We use annualized or per-period? 
+        # Realized vol is usually per-period in this engine? Let's check compute_realized_volatility.
+        # It calculates std(returns) * sqrt(len). That's "total vol over period"?
+        # Actually standard definition matches.
+        # Let's simple compare the raw values of forecast (next period sigma) vs recent realized sigma?
+        # Re-checking forecast_volatility in statistics.py: it returns "next_vol_scaled / 100.0" which is 1-period sigma.
+        # compute_realized_volatility: std(returns) * sqrt(len) -> This is accumulated vol.
+        # We need 1-period volatility for comparison.
+        
+        # Let's do a simpler heuristic: 
+        # If vol_forecast > recent realized variability (approx), widen.
+        # Actually, let's look at `realized_vol`. If it is the "volatility over the lookback", 
+        # and GARCH is "instantaneous next period vol", they might be different scales.
+        
+        # Safe Approach: If we don't perfectly align scales, just use the GARCH value itself to modulating?
+        # Better: Use GARCH to detect "High Volatility Regime" directly.
+        # If vol_forecast > 0.005 (0.5% per 15m candle), that is high.
+        
+        # Implementation Plan refined: 
+        # Dynamic Multiplier = Base * (1 + (GARCH_Vol / Threshold))?
+        # Let's stick to the Plan: ratio if possible.
+        # But realized_vol in code is `np.std(returns) * np.sqrt(len)`.
+        # GARCH forecast is `sigma_t+1`.
+        # We need `current_period_sigma` from realized.
+        # `current_period_sigma` ~= realized_vol / sqrt(len).
+        
+        recent_sigma = 0.0
+        if len(closes_list) > 0:
+             # Re-calc simple std dev of recent returns
+             r_slice = [(closes_list[i] - closes_list[i-1])/closes_list[i-1] for i in range(1, len(closes_list))]
+             if r_slice:
+                 recent_sigma = float(np.std(r_slice))
+                 
+        if recent_sigma > 0:
+            ratio = vol_forecast / recent_sigma
+            # Cap the ratio to avoid extreme widening
+            # If GARCH says vol will be 2x recent, we widen bands by 2x.
+            if ratio > 1.0:
+                if ratio > 1.05: # Threshold
+                    ratio = min(ratio, 2.0)
+                    std_dev_mult = settings.bollinger_std_dev * ratio
+
+    bb_upper = None
+    bb_mid = None
+    bb_lower = None
+    bb_res = feature_engine.compute_bollinger_bands(
+        list(feature_engine.price_buffer),
+        settings.bollinger_period,
+        std_dev_mult # Dynamic!
+    )
+    if bb_res:
+        bb_upper, bb_mid, bb_lower = bb_res
 
     features = MarketFeatures(
         timestamp=datetime.now(),

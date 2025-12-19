@@ -13,6 +13,7 @@ import ssl
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 # Handle macOS SSL certificate issues
 try:
@@ -41,11 +42,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings
 from app.tools.binance_tool import binance_tool
-from app.tools.alpaca_tool import alpaca_tool
 from app.utils.backtester import Backtester
-from app.nodes.feature_engineering import feature_engine
+from app.nodes.feature_engineering import FeatureEngine, compute_features_node
 from app.nodes.momentum_policy import momentum_strategy_node
 from app.nodes.mean_reversion_policy import mean_reversion_strategy_node
+from app.utils.statistics import forecast_volatility
 from app.schemas.events import KlineEvent
 from app.schemas.models import MarketFeatures, Signal
 import random
@@ -102,7 +103,7 @@ async def fetch_data(symbol: str, days: int, provider: str, start_time: datetime
              
          try:
              df = pd.read_csv(data_file)
-             df['timestamp'] = pd.to_datetime(df['timestamp'])
+             df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
              df = df.sort_values('timestamp')
              
              # Filter by symbol if present
@@ -252,7 +253,7 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
         try:
             df_feat = pd.read_csv(features_file)
             # Ensure timestamp parse
-            df_feat['timestamp'] = pd.to_datetime(df_feat['timestamp'])
+            df_feat['timestamp'] = pd.to_datetime(df_feat['timestamp'], utc=True)
             
             # Create dict for fast lookup: timestamp -> dict
             # We assume features are 1m aligned.
@@ -289,14 +290,8 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
     # Reset feature engine buffers if possible, or just create a new one?
     # The global `feature_engine` is used by nodes.
     # We should probably clear it.
-    feature_engine.price_buffer.clear()
-    feature_engine.ema_9_buffer.clear()
-    feature_engine.ema_50_buffer.clear()
-    feature_engine.high_buffer.clear()
-    feature_engine.low_buffer.clear()
-    feature_engine.close_buffer.clear()
-    feature_engine.ema_9 = None
-    feature_engine.ema_50 = None
+    # Instantiate LOCAL feature engine to ensure clean state
+    feature_engine = FeatureEngine()
     
     # processed_klines = [] # We will now loop over M15 klines
     plot_times = []
@@ -409,10 +404,35 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
         rsi = feature_engine.compute_rsi(list(feature_engine.close_buffer), settings.rsi_period)
         adx = feature_engine.compute_adx(period=14)
         
+        # --- GARCH DYNAMIC BANDS LOGIC ---
+        std_dev_mult = settings.bollinger_std_dev
+        closes_list = list(feature_engine.close_buffer)
+        
+        if len(closes_list) > 30:
+            returns = [(closes_list[i] - closes_list[i-1])/closes_list[i-1] for i in range(1, len(closes_list))]
+            try:
+                vol_forecast = forecast_volatility(returns, method='GARCH')
+            except:
+                vol_forecast = None
+            
+            # Dynamic Logic
+            if vol_forecast is not None:
+                # Calculate recent realized sigma (1-period)
+                if len(closes_list) > 1:
+                    r_slice = returns
+                    if r_slice:
+                        recent_sigma = float(np.std(r_slice))
+                        
+                        if recent_sigma > 0:
+                            ratio = vol_forecast / recent_sigma
+                            if ratio > 1.05: # Threshold
+                                ratio = min(ratio, 2.0)
+                                std_dev_mult = settings.bollinger_std_dev * ratio
+
         bb_res = feature_engine.compute_bollinger_bands(
             list(feature_engine.price_buffer),
             settings.bollinger_period,
-            settings.bollinger_std_dev
+            std_dev_mult # Dynamic
         )
         bb_upper, bb_mid, bb_lower = bb_res if bb_res else (None, None, None)
         
