@@ -110,7 +110,7 @@ Then jump to **Section 5** to start trading!
 
 ---
 
-## 4. Manual Setup (Alternative)
+## 5. Manual Setup (Alternative)
 
 ### 4.1 Install Dependencies
 
@@ -212,91 +212,116 @@ Running external health checks (ALPACA, Gemini)...
 
 ---
 
-## 5. Running the Trading System
+## 6. Running the Trading System
 
-### 5.1 Start Trading Loop
+### 5.1 Start Live Trading (or Paper Trading)
 
-After health checks pass, start the main trading loop:
+To launch the main trading agent:
 
 ```bash
 poetry run python -m app.main
 ```
 
-The system will:
+This command acts as the entry point for the **LangGraph** agent. It will:
 
-1. Run health checks on all APIs
-2. Initialize the trading provider
-3. Compile the LangGraph trading pipeline
-4. Execute the trading loop every 60 seconds (configurable)
+1. **Run Health Checks**: Validates API connections (Binance/Alpaca, Gemini LLM).
+2. **Initialize Components**: Sets up the Strategy Router, Risk Manager, and Execution Agent.
+3. **Start Loop**: Enters a persistent loop (default: 60s interval) to trading.
 
-### 5.2 Switching Between Providers
+### 5.2 Switching Between Providers (Live vs. Paper)
 
-To switch from Alpaca to Binance (or vice versa), just update `.env`:
+Control the trading mode via your `.env` file:
+
+**Option A: Alpaca Paper Trading (Risk-Free)**
 
 ```env
-# For Alpaca paper trading (safe):
 TRADING_PROVIDER="alpaca"
 SYMBOL="BTCUSD"
+```
 
-# For Binance testnet (safe):
+*Best for: Testing strategy logic and execution flow without real money.*
+
+**Option B: Binance Testnet (Crypto Simulation)**
+
+```env
 TRADING_PROVIDER="binance"
-SYMBOL="BTCUSDT"
 TESTNET=true
-
-# For Binance mainnet (REAL MONEY - BE CAREFUL):
-TRADING_PROVIDER="binance"
 SYMBOL="BTCUSDT"
+```
+
+*Best for: Testing crypto-specific microstructure.*
+
+**Option C: Binance Mainnet (REAL MONEY)**
+
+```env
+TRADING_PROVIDER="binance"
 TESTNET=false
+SYMBOL="BTCUSDT"
 ```
 
-### 5.3 Monitor Trading Activity
+*⚠️ WARNING: This will trade real funds. Ensure you have tested thoroughly.*
 
-The system logs all activity including:
+### 5.3 Monitoring
 
-- Market data ingestion
-- Feature calculations
-- Regime classification (with LLM reasoning)
-- Strategy signals
-- Risk checks
-- Order execution results
-
-### 5.4 Interactive Dashboard
-
-The system includes a rich CLI dashboard for monitoring and control:
-
-```bash
-poetry run python -m app.control
-```
-
-*Features: Live Trading Arena, Training Dojo (Backtesting), Hall of Fame (Stats)*
-
-### 5.5 Backtesting
-
-```bash
-# Basic Momentum Backtest (Last 7 Days)
-poetry run python scripts/run_backtest.py --days 7 --strategy momentum
-
-# Visual Backtest (Recommended)
-poetry run python scripts/run_backtest.py --days 7 --strategy momentum --visual
-```
-
-See `MASTER_DOCUMENTATION.md` for full backtesting reference.
-
-Example output:
-
-```bash
-2025-11-16 10:30:00 - INFO - Connected to ALPACA (PAPER TRADING)
-2025-11-16 10:30:05 - INFO - Trading Loop Iteration 1
-2025-11-16 10:30:06 - INFO - Price: 43250.50
-2025-11-16 10:30:06 - INFO - Regime: TRENDING (confidence: 0.85)
-2025-11-16 10:30:07 - INFO - Signal: LONG (strength: 0.75)
-2025-11-16 10:30:07 - INFO - Executing order: BUY 0.01 BTCUSD
-2025-11-16 10:30:08 - INFO - Order executed successfully: order_123456
-```
+The system logs all decisions to the console. You can also monitor the `logs/` directory if configured.
 
 ---
 
-## 6. Running Tests
+## 7. Backtesting & Analysis
+
+ We support two distinct backtesting modes: **Vectorized** (for long-term statistical validation) and **Event-Driven** (for granular strategy simulation).
+
+### 7.1 Verified Performance (The "Holistic Review" Results)
+
+ Our core **Momentum v3** strategy has been rigorously stress-tested across 5 years of historical data (2020-2025). The system utilizes a "Low Noise" hypothesis, relying on strong trend filters (EMA200) and volatility checks to ensure safety.
+
+ **Key Performance Metrics (2020-2025):**
+
+ | Metric | Result | Notes |
+ | :--- | :--- | :--- |
+ | **Total Return** | **+156.64%** | Excellent growth over 5 years (Event-Driven). |
+ | **Max Drawdown** | **10.72%** | Robust risk profile even with slippage. |
+ | **Sharpe Ratio** | **5.29** | High risk-adjusted return. |
+ | **Win Rate** | **36.85%** | Typical trend following profile (big wins, small losses). |
+ | **Avg Win/Loss** | **2.27** | Strong profitability per trade. |
+
+ *Source: `docs/analysis/project_holistic_review.md` & Live Backtest*
+
+### 7.2 Reproducing the Results
+
+ To reproduce these exact figures using the event-driven backtester (which simulates 15-minute candles, spreads, and strategy logic):
+
+ ```bash
+ # Full 5-Year Backtest (2000 Days)
+ poetry run python scripts/run_backtest.py --symbol BTCUSDT --data_file data/BTCUSDT_5Y_MASTER.csv --strategy momentum --days 2000 --visual
+ ```
+
+ *Note: This requires the `data/BTCUSDT_5Y_MASTER.csv` file to be present.*
+
+### 7.3 Other Backtest Modes
+
+ **Quick Vectorized Test (Fast Check)**
+ For a rapid check of the underlying signal logic without event-driven delays:
+
+ ```bash
+ poetry run python scripts/quick_vectorized_test.py
+ ```
+
+ **Recent Performance (Last 7 Days)**
+
+ ```bash
+ poetry run python scripts/run_backtest.py --days 7 --strategy momentum --visual
+ ```
+
+ **Features:**
+
+- Simulates the Order Book (LOB).
+- Injects random slippage and latency.
+- Full replay of the agent's decision-making graph.
+
+---
+
+## 8. Running Tests
 
 Tests live under `src/tests` and are configured via `pytest.ini`.
 
@@ -315,7 +340,7 @@ Tests are designed to be **offline** and should not hit external APIs; tools are
 
 ---
 
-## 7. Architecture Highlights
+## 9. Architecture Highlights
 
 ### 7.1 Trading Provider Abstraction
 
@@ -358,7 +383,7 @@ Each node is independently testable and can be swapped out.
 
 ---
 
-## 8. Configuration Options
+## 10. Configuration Options
 
 Key settings in `.env`:
 
@@ -380,7 +405,7 @@ Key settings in `.env`:
 
 ---
 
-## 9. Safety Features
+## 11. Safety Features
 
 ✅ **Paper Trading First**: Alpaca provider always uses paper trading  
 ✅ **Health Checks**: Validates APIs before trading  
@@ -391,7 +416,7 @@ Key settings in `.env`:
 
 ---
 
-## 10. Next Steps
+## 12. Next Steps
 
 1. **Test with Paper Trading**: Start with Alpaca paper trading to validate strategy
 2. **Backtest**: Enable backtesting mode with historical data
@@ -402,7 +427,7 @@ Key settings in `.env`:
 
 ---
 
-## 11. Troubleshooting
+## 15. Troubleshooting
 
 **Health checks fail**: Check API keys in `.env`, verify network connectivity
 
@@ -416,7 +441,7 @@ Key settings in `.env`:
 
 ---
 
-## 12. Contributing
+## 16. Contributing
 
 To add a new trading provider:
 
@@ -434,59 +459,9 @@ MIT License - see LICENSE file for details.
 
 ---
 
-## 5. Running the trading agent
+## 13. Deployment
 
-> ⚠️ Always start on **Binance testnet** and with small sizes.
-
-From the project root:
-
-```bash
-python -m app.main
-```
-
-`main.py` will:
-
-1. Initialize the Binance tool (testnet or mainnet according to config).
-2. Compile the `full_mvp_graph` LangGraph.
-3. Enter an infinite loop executing one full pipeline iteration per minute:
-   - Ingest market data.
-   - Compute features.
-   - Classify market regime.
-   - Route strategy.
-   - Generate momentum signal (or neutral).
-   - Apply risk checks and generate orders.
-   - Execute approved orders and log results.
-
-To run a **single iteration** (useful for debugging), you can call `run_single_iteration()` from an interactive session or add a small CLI wrapper.
-
----
-
-## 6. Backtesting & metrics
-
-For offline strategy evaluation:
-
-- Use `Backtester` (`src/app/utils/backtester.py`) to simulate position opens/closes based on `Signal`s.
-- Use `LOB-simulator` (`src/app/utils/lob_simulator.py`) to model order‑book‑level fills.
-- Use `metrics` (`src/app/utils/metrics.py`) to compute performance statistics:
-  - Sharpe ratio
-  - Max drawdown
-  - Win rate
-  - Profit factor
-
-A typical backtest loop:
-
-1. Load historical candles from CSV.
-2. Feed them into feature + momentum nodes.
-3. Pass resulting signals into `Backtester.process_signal`.
-4. At the end, call `Backtester.get_results()` and `metrics.generate_performance_report()`.
-
-You can later wrap this into a dedicated script (e.g. `scripts/run_backtest.py`).
-
----
-
-## 7. Deployment notes
-
-### 7.1 Docker
+### 13.1 Docker
 
 The `docker/` folder contains a `Dockerfile` and `docker-compose.yml`. A typical workflow:
 
@@ -496,30 +471,27 @@ docker compose up --build
 
 Ensure the container sets `PYTHONPATH=/src` (already handled in the Dockerfile) so that `import app` works.
 
-### 7.2 Kubernetes
+### 13.2 Kubernetes
 
 The `k8s/` manifests provide a basic deployment and service for running the agent in a cluster. You will want to:
 
 - Mount configuration / secrets via Kubernetes Secrets and ConfigMaps.
 - Ensure resource limits, liveness/readiness probes, and logging are configured for your environment.
 
-### 7.3 CI
+### 13.3 CI (GitHub Actions)
 
 The `ci/github-actions.yaml` workflow is intended to:
 
 - Install Python and dependencies.
 - Run `pytest` on every push / PR.
 
-Make sure secrets for live integrations are **not** required for CI (tests should work offline).
-
 ---
 
-## 8. Roadmap / potential improvements
+## 14. Roadmap
 
-- Add a dedicated backtest runner script and CLI.
-- Enhance `RiskManager` with volatility‑based sizing and daily drawdown tracking.
-- Add more strategies (e.g. breakout) and integrate via `strategy_router`.
-- Expand test coverage for the full LangGraph pipeline, backtester, and metrics.
-- Add richer monitoring / logging, e.g. Prometheus metrics and dashboards.
+1. **Deployment**: Implement `leverage_manager` node for smart sizing.
+2. **Strategy**: Add **Breakout Strategy** node.
+3. **Data**: Integrate Polygon.io for deeper order book data.
+4. **Monitoring**: Add Prometheus/Grafana exporter.
 
 This README will evolve as the system grows; contributions and refinements are welcome.

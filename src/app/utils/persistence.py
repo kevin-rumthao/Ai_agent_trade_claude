@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 class StateManager:
     """Manages state persistence to disk."""
 
-    def __init__(self, data_dir: str = "data") -> None:
+    def __init__(self, data_dir: Optional[str] = None) -> None:
+        if data_dir is None:
+            data_dir = os.getenv("DATA_DIR", "data")
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 

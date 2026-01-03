@@ -5,6 +5,7 @@ import pandas as pd
 
 from app.schemas.models import ExecutionResult, PortfolioState, Position, Signal
 from app.schemas.events import KlineEvent
+from app.utils.metrics import calculate_average_win_loss_ratio
 
 
 class Backtester:
@@ -250,6 +251,7 @@ class Backtester:
             "win_rate": win_rate,
             "max_drawdown": max_drawdown,
             "sharpe_ratio": sharpe_ratio,
+            "avg_win_loss_ratio": calculate_average_win_loss_ratio(self.trades),
             "trades": self.trades
         }
 
@@ -298,6 +300,7 @@ class Backtester:
             return 0.0
 
         # Annualize (assuming daily data)
-        sharpe = (mean_return / std_dev) * (252 ** 0.5)
+        # New (Correct for 15m Crypto)
+        sharpe = (mean_return / std_dev) * (35040 ** 0.5)
         return sharpe
 

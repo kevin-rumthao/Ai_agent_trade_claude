@@ -61,26 +61,38 @@ OUTPUT IN JSON FORMAT ONLY.
         # Combine system and user messages
         full_prompt = f"{system_prompt}\n\n{user_message}"
 
+        logger.info(json.dumps({
+            "event": "LLM_REQUEST",
+            "function": "classify_regime_with_llm",
+            "symbol": features.symbol,
+            "ambiguity_score": ambiguity_score
+        }))
+
         # Generate response using Gemini
         try:
             response = self.model.generate_content(full_prompt)
             content = response.text
             
             # Clean markdown code blocks if present
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                 content = content.split("```")[1].split("```")[0]
+            clean_content = content
+            if "```json" in clean_content:
+                clean_content = clean_content.split("```json")[1].split("```")[0]
+            elif "```" in clean_content:
+                clean_content = clean_content.split("```")[1].split("```")[0]
 
-            data = json.loads(content)
+            data = json.loads(clean_content)
             validated = GeminiRegimeResponse(**data)
             
+            # Log readable decision
+            logger.info(f"LLM Decision: {validated.regime} (Conf: {validated.confidence:.2f})")
+            if hasattr(validated, 'reasoning'):
+                logger.info(f"LLM Reasoning: {validated.reasoning}")
+
             return MarketRegime(
                 regime=validated.regime,
                 confidence=validated.confidence,
                 timestamp=features.timestamp,
-                # Store reasoning somehow if needed, but MarketRegime model doesn't have it yet.
-                # Ignoring reasoning for now or logging it.
+                # Store reasoning somehow if needed
             )
         except Exception as e:
             logger.error(f"LLM Parse Error: {e}")

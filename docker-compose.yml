@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  trading-agent:
+    build: .
+    container_name: ai-trading-agent
+    volumes:
+      # Persist data (state, databases)
+      - ./data:/data
+      # Persist logs
+      - ./logs:/app/logs
+      # Mount .env file (optional, better to pass env vars explicitly in prod)
+      - ./.env:/app/.env
+    environment:
+      - DATA_DIR=/data
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    # Healthcheck mainly ensures process is running, but we could add a script
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import sys; sys.exit(0)" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3

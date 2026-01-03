@@ -8,14 +8,10 @@ from app.langgraph_graphs.full_mvp_graph import create_full_mvp_graph, FullMVPSt
 from app.tools.trading_provider import trading_provider
 from app.schemas.models import RiskLimits
 from app.healthcheck import run_all_checks, HealthCheckError
-
+from app.utils.logging_config import setup_logging
 
 # Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging()
 
 
 async def run_trading_loop() -> None:
@@ -111,8 +107,10 @@ async def run_trading_loop() -> None:
             }
 
             # Execute the graph
+            iter_start = datetime.now()
+            iter_duration = 0.0
+            
             try:
-                iter_start = datetime.now()
                 result = await graph.ainvoke(state)
                 iter_duration = (datetime.now() - iter_start).total_seconds()
 
@@ -129,6 +127,8 @@ async def run_trading_loop() -> None:
                     logger.info(f"EMA(9): {ema9}")
                     logger.info(f"EMA(50): {ema50}")
                     logger.info(f"ATR: {atr}")
+                    adx = f"{features.adx:.2f}" if getattr(features, 'adx', None) is not None else "N/A"
+                    logger.info(f"ADX: {adx}")
 
                 if result.get('regime'):
                     regime = result['regime']
@@ -137,10 +137,10 @@ async def run_trading_loop() -> None:
                 if result.get('selected_strategy'):
                     logger.info(f"Selected Strategy: {result['selected_strategy']}")
 
-                if result.get('signal'):
-                    signal = result['signal']
-                    logger.info(f"Signal: {signal.direction} (strength: {signal.strength:.2f}, confidence: {signal.confidence:.2f})")
-                    logger.info(f"Reasoning: {signal.reasoning}")
+                if result.get('signals'):
+                    for signal in result['signals']:
+                        logger.info(f"Signal ({signal.strategy}): {signal.direction} (strength: {signal.strength:.2f}, confidence: {signal.confidence:.2f})")
+                        logger.info(f"Reasoning: {signal.reasoning}")
 
                 if result.get('approved_orders'):
                     logger.info(f"Approved Orders: {len(result['approved_orders'])}")
@@ -157,6 +157,7 @@ async def run_trading_loop() -> None:
 
             except Exception as e:
                 logger.error(f"Error executing trading graph: {e}", exc_info=True)
+                iter_duration = (datetime.now() - iter_start).total_seconds()
 
             logger.info("Iteration %s completed in %.3fs", iteration, iter_duration)
 

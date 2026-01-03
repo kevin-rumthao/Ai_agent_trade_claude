@@ -111,7 +111,13 @@ async def fetch_data(symbol: str, days: int, provider: str, start_time: datetime
                  df = df[df['symbol'] == symbol]
                  
              # Filter by time range if provided
-             if start_time:
+             if days:
+                 end_time = df['timestamp'].max()
+                 start_time = end_time - timedelta(days=days)
+                 df = df[df['timestamp'] >= start_time]
+                 print(f"Filtered to last {days} days: {len(df)} candles.")
+             
+             if start_time and 'timestamp' in df.columns:
                  df = df[df['timestamp'] >= start_time]
              if end_time:
                  df = df[df['timestamp'] <= end_time]
@@ -490,6 +496,7 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
     print(f"Win Rate:     {results['win_rate']:.2f}%")
     print(f"Max Drawdown: {results['max_drawdown']:.2f}%")
     print(f"Sharpe Ratio: {results['sharpe_ratio']:.2f}")
+    print(f"Avg Win/Loss: {results['avg_win_loss_ratio']:.2f}")
     print("========================")
 
     if args.visual:

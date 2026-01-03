@@ -369,154 +369,7 @@ class FeatureEngine:
 
 # ... (Global instance and compute_features_node)
 
-async def compute_features_node(state: FeatureState) -> FeatureState:
-    # ... (Initialization logic remains same)
-    global _features_loaded
-    symbol = state.get("symbol", settings.symbol)
-    
-    # Load state on first run
-    if not _features_loaded:
-        saved_state = persistence.load_state(f"features_{symbol}")
-        if saved_state:
-            feature_engine.from_dict(saved_state)
-            print(f"Restored feature state for {symbol}")
-        _features_loaded = True
 
-    klines = state.get("klines", [])
-    orderbook = state.get("orderbook")
-    trades = state.get("trades", [])
-
-    # ... (Price determination logic remains same)
-    current_price = 0.0
-    if orderbook and orderbook.get_mid_price():
-        current_price = orderbook.get_mid_price() or 0.0
-    elif trades:
-        current_price = trades[-1].price
-    elif klines:
-        current_price = klines[-1].close
-
-    if current_price == 0.0:
-        return state
-
-    # Update price buffers with kline data
-    lookback_needed = 50
-    for kline in klines[-lookback_needed:]:
-        feature_engine.high_buffer.append(kline.high)
-        feature_engine.low_buffer.append(kline.low)
-        feature_engine.close_buffer.append(kline.close)
-        feature_engine.price_buffer.append(kline.close)
-
-    # Compute EMA values from available klines to avoid long warm-up delays.
-    closes = [k.close for k in klines]
-
-    ema9_val = None
-    ema50_val = None
-    ema200_val = None
-
-    if len(closes) >= settings.ema_short_period:
-        ema9_val = feature_engine.compute_ema(
-            closes[-settings.ema_short_period :], settings.ema_short_period
-        )
-    if len(closes) >= settings.ema_long_period:
-        ema50_val = feature_engine.compute_ema(
-            closes[-settings.ema_long_period :], settings.ema_long_period
-        )
-    if len(closes) >= 200:
-        ema200_val = feature_engine.compute_ema(
-            closes[-200:], 200
-        )
-
-    # Assign computed EMAs if available
-    if ema9_val is not None:
-        feature_engine.ema_9 = ema9_val
-    if ema50_val is not None:
-        feature_engine.ema_50 = ema50_val
-    if ema200_val is not None:
-        feature_engine.ema_200 = ema200_val
-
-    # Also keep incremental update
-    feature_engine.update_ema(current_price)
-
-    # ... (Rest of indicator computation remains same)
-    atr = feature_engine.compute_atr()
-    realized_vol = feature_engine.compute_realized_volatility()
-    
-    # ... (skip to features object creation)
-    
-    # Compute ADX
-    adx = feature_engine.compute_adx(period=14)
-    
-    # ... (Stationarity/Hurst logic)
-    closes_list = list(feature_engine.close_buffer)
-    is_stat, p_val = check_stationarity(closes_list)
-    hurst = calculate_hurst(closes_list)
-    
-    if len(closes_list) > 2:
-        returns = [(closes_list[i] - closes_list[i-1])/closes_list[i-1] for i in range(1, len(closes_list))]
-        vol_forecast = forecast_volatility(returns)
-    else:
-        vol_forecast = None
-        
-    # Orderbook/OFI/Spread logic
-    ob_imbalance = None
-    spread = None
-    ofi = None
-    if orderbook:
-        ob_imbalance = orderbook.get_imbalance()
-        spread = orderbook.get_spread()
-        ofi = feature_engine.compute_ofi(orderbook)
-        
-    vwap = feature_engine.compute_vwap(trades[-100:])
-    
-    rsi = feature_engine.compute_rsi(
-        list(feature_engine.close_buffer), settings.rsi_period
-    )
-    
-    bb_upper = None
-    bb_mid = None
-    bb_lower = None
-    bb_res = feature_engine.compute_bollinger_bands(
-        list(feature_engine.price_buffer),
-        settings.bollinger_period,
-        settings.bollinger_std_dev
-    )
-    if bb_res:
-        bb_upper, bb_mid, bb_lower = bb_res
-
-    features = MarketFeatures(
-        timestamp=datetime.now(),
-        symbol=symbol,
-        price=current_price,
-        ema_9=feature_engine.ema_9,
-        ema_50=feature_engine.ema_50,
-        ema_200=feature_engine.ema_200, # Added field
-        atr=atr,
-        realized_volatility=realized_vol,
-        adx=adx,
-        orderbook_imbalance=ob_imbalance,
-        spread=spread,
-        vwap=vwap,
-        rsi=rsi,
-        bollinger_upper=bb_upper,
-        bollinger_mid=bb_mid,
-        bollinger_lower=bb_lower,
-        hurst=hurst,
-        is_stationary=is_stat,
-        volatility_forecast=vol_forecast,
-        ofi=ofi
-    )
-    
-    # Update previous orderbook
-    if orderbook:
-        feature_engine.prev_orderbook = orderbook
-    
-    # Persist state
-    persistence.save_state(f"features_{symbol}", feature_engine.to_dict())
-
-    return {
-        **state,
-        "features": features
-    }
 
 
 # Global feature engine instance
@@ -629,6 +482,9 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
     rsi = feature_engine.compute_rsi(
         list(feature_engine.close_buffer), settings.rsi_period
     )
+
+    # Compute ADX
+    adx = feature_engine.compute_adx(period=14)
 
     # Phase 2: Statistical Features & Volatility Forecast
     # We need a list of closes for these tests

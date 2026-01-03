@@ -81,6 +81,7 @@ class AlpacaTool:
                 return f"{base}/USD"
         return symbol
 
+    @api_retry_policy()
     async def get_orderbook(self, symbol: str, limit: int = 20) -> OrderbookUpdate:
         """Fetch current orderbook snapshot.
 
@@ -155,6 +156,7 @@ class AlpacaTool:
         except Exception as e:
             raise RuntimeError(f"Failed to fetch orderbook (Real & Synthetic both failed): {e}")
 
+    @api_retry_policy()
     async def get_recent_trades(self, symbol: str, limit: int = 100) -> list[TradeEvent]:
         """Fetch recent trades."""
         alpaca_symbol = self._convert_symbol(symbol)
@@ -201,6 +203,7 @@ class AlpacaTool:
         except Exception as e:
             raise RuntimeError(f"Failed to fetch trades: {e}")
 
+    @api_retry_policy()
     async def get_klines(
         self,
         symbol: str,
@@ -330,6 +333,7 @@ class AlpacaTool:
                 timestamp=datetime.now()
             )
 
+    @api_retry_policy()
     async def cancel_order(self, order_id: str, symbol: str) -> ExecutionResult:
         """Cancel an open order on Alpaca."""
         if not self.trading_client:
@@ -357,6 +361,7 @@ class AlpacaTool:
                 timestamp=datetime.now()
             )
 
+    @api_retry_policy()
     async def get_order_status(self, order_id: str, symbol: str) -> ExecutionResult:
         """Get order status from Alpaca."""
         if not self.trading_client:
@@ -381,6 +386,7 @@ class AlpacaTool:
                 timestamp=datetime.now()
             )
 
+    @api_retry_policy()
     async def get_portfolio_state(self) -> PortfolioState:
         """Fetch current portfolio state from Alpaca."""
         if not self.trading_client:

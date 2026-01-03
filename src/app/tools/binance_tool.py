@@ -43,6 +43,7 @@ class BinanceTool:
         if self.client:
             await self.client.close_connection()
 
+    @api_retry_policy()
     async def get_orderbook(self, symbol: str, limit: int = 20) -> OrderbookUpdate:
         """Fetch current orderbook snapshot."""
         if not self.client:
@@ -63,6 +64,7 @@ class BinanceTool:
         except BinanceAPIException as e:
             raise RuntimeError(f"Failed to fetch orderbook: {e}")
 
+    @api_retry_policy()
     async def get_recent_trades(self, symbol: str, limit: int = 100) -> list[TradeEvent]:
         """Fetch recent trades."""
         if not self.client:
@@ -85,6 +87,7 @@ class BinanceTool:
         except BinanceAPIException as e:
             raise RuntimeError(f"Failed to fetch trades: {e}")
 
+    @api_retry_policy()
     async def get_klines(
         self,
         symbol: str,
@@ -171,6 +174,7 @@ class BinanceTool:
                 timestamp=datetime.now()
             )
 
+    @api_retry_policy()
     async def cancel_order(self, order_id: str, symbol: str) -> ExecutionResult:
         """Cancel an open order on Binance."""
         if not self.client:
@@ -198,6 +202,7 @@ class BinanceTool:
                 timestamp=datetime.now()
             )
 
+    @api_retry_policy()
     async def get_order_status(self, order_id: str, symbol: str) -> ExecutionResult:
         """Get order status from Binance."""
         if not self.client:
@@ -225,6 +230,7 @@ class BinanceTool:
                 timestamp=datetime.now()
             )
 
+    @api_retry_policy()
     async def get_account_balance(self) -> float:
         """Get account balance in USDT."""
         if not self.client:
@@ -239,6 +245,7 @@ class BinanceTool:
         except BinanceAPIException as e:
             raise RuntimeError(f"Failed to fetch balance: {e}")
 
+    @api_retry_policy()
     async def get_portfolio_state(self, symbol: str) -> PortfolioState:
         """Get current portfolio state."""
         if not self.client:
