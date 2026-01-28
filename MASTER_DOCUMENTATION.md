@@ -1,19 +1,17 @@
-# 📚 LangGraph AI Trading Agent - Master Documentation
-
-**Version**: 1.1  
-**Last Updated**: December 4, 2025  
-**Author**: Kevin  
-**Status**: ✅ Production Ready
+**Version**: 1.3 (Dev)
+**Last Updated**: January 28, 2026
+**Author**: Kevin
+**Status**: Development
 
 ---
 
 ## 📑 Table of Contents
 
-1. [Project Overview](#1-project-overview)
+1. [Introduction](#1-introduction)
 2. [Architecture](#2-architecture)
-3. [Installation & Setup](#3-installation--setup)
+3. [Installation](#3-installation)
 4. [Configuration](#4-configuration)
-5. [Running the System](#5-running-the-system)
+5. [Operation](#5-operation)
 6. [API Usage & Limits](#6-api-usage--limits)
 7. [Monitoring & Control](#7-monitoring--control)
 8. [Testing & Debugging](#8-testing--debugging)
@@ -23,9 +21,9 @@
 
 ---
 
-## 1. System Overview
+## 1. Introduction
 
-### 1.1 Introduction
+### 1.1 Overview
 
 This project implements a **modular, event-driven AI trading agent** built on **LangGraph**. It combines:
 
@@ -44,21 +42,21 @@ orderbook = await trading_provider.get_orderbook(symbol)
 result = await trading_provider.execute_order(order)
 ```
 
-✅ **Multi-Provider Support**: Switch between Binance, Alpaca, and Kotak Neo with a single config change  
-✅ **Paper Trading**: Test strategies risk-free using Alpaca's paper trading ($100K virtual cash)  
-✅ **AI-Powered**: Uses Google Gemini for intelligent regime classification  
-✅ **Advanced Strategies**: Includes Momentum and Mean Reversion strategies  
-✅ **Hedge Agent**: Automated hedging of positions using spot/futures  
-✅ **Smart Execution**: Limit order placement with market fallback  
-✅ **Health Checks**: Validates all API connections before trading starts  
-✅ **Modular Architecture**: Easy to extend with new strategies or providers  
-✅ **Comprehensive Testing**: Unit tests for all major components  
+- **Multi-Provider Support**: Switch between Binance, Alpaca, and Kotak Neo via configuration.
+- **Paper Trading**: Risk-free strategy testing using Alpaca's paper trading environment.
+- **AI-Powered**: Regime classification using Google Gemini.
+- **Advanced Strategies**: Implementation of Momentum and Mean Reversion strategies.
+- **Hedge Agent**: Automated hedging of spot positions using futures.
+- **Smart Execution**: Limit order placement with market fallback mechanisms.
+- **Health Checks**: Pre-trade validation of API connections.
+- **Modular Architecture**: Extensible design for new strategies and providers.
+- **Comprehensive Testing**: Unit test coverage for core components.  
 
 ```bash
 docker compose up --build
 ```
 
-✅ **Production Ready**: Logging, error handling, graceful shutdowns  
+- **Production Ready**: Structured logging, error handling, and graceful shutdown sequences.  
 
 ### 1.3 Trading Pipeline
 
@@ -90,9 +88,9 @@ The system executes a complete trading pipeline every iteration:
 
 | Platform | Type | Mode | Assets | Status |
 |----------|------|------|--------|--------|
-| **Alpaca** | Stocks & Crypto | Paper Trading | AAPL, TSLA, BTC/USD | ✅ Recommended |
-| **Binance** | Crypto | Testnet/Mainnet | BTCUSDT, ETHUSDT | ✅ Working |
-| **Kotak Neo** | Stocks & F&O | Live/Paper | NIFTY, BANKNIFTY | 🚧 Experimental |
+| **Alpaca** | Stocks & Crypto | Paper Trading | AAPL, TSLA, BTC/USD | Recommended |
+| **Binance** | Crypto | Testnet/Mainnet | BTCUSDT, ETHUSDT | Stable |
+| **Kotak Neo** | Stocks & F&O | Live/Paper | NIFTY, BANKNIFTY | Experimental |
 
 ### 1.5 Tech Stack
 
@@ -133,7 +131,8 @@ Ai_agent_trade_claude/
 │   │   ├── hedge_agent.py           # Hedging logic
 │   │   ├── risk_manager.py          # Risk checks
 │   │   ├── execution_agent.py       # Order execution
-│   │   └── data_sanitizer.py        # Data integrity filter
+│   │   ├── data_sanitizer.py        # Data integrity filter
+│   │   └── ts_jepa_node.py          # World Model (JEPA)
 │   │
 │   ├── schemas/                     # Data models
 │   │   ├── events.py                # Market events
@@ -246,6 +245,14 @@ Ai_agent_trade_claude/
 - Ensures data integrity (positive prices, valid volumes)
 - Prevents garbage-in/garbage-out scenarios
 
+#### **TS-JEPA World Model Node**
+
+- **Joint Embedding Predictive Architecture** for market state
+- Learns latent representation of market dynamics
+- Predicts future states in latent space
+- Inputs: Normalized technical features
+- Outputs: Latent vector describing market structure
+
 ### 2.3 Data Flow
 
 ```python
@@ -258,6 +265,9 @@ class FullMVPState(TypedDict):
     
     # Features
     features: MarketFeatures | None
+
+    # World Model
+    market_latent_state: list[float] | None
     
     # Regime
     regime: MarketRegime | None
@@ -266,7 +276,7 @@ class FullMVPState(TypedDict):
     selected_strategy: Literal["momentum", "mean_reversion", "neutral"] | None
     
     # Signal
-    signal: Signal | None
+    signals: list[Signal]
     
     # Risk
     portfolio: PortfolioState | None
@@ -356,7 +366,7 @@ workflow.add_edge("execute_orders", END)
 
 ---
 
-## 3. Installation & Setup
+## 3. Installation
 
 ### 3.1 Prerequisites
 
@@ -366,7 +376,7 @@ workflow.add_edge("execute_orders", END)
 - **Trading account** (Alpaca or Binance)
 - **Google AI account** (for Gemini API)
 
-### 3.2 Quick Start Guide
+### 3.2 Installation Guide
 
 ```bash
 # Navigate to project
@@ -568,9 +578,9 @@ MAX_DAILY_LOSS=5000.0
 
 ---
 
-## 5. Running the System
+## 5. Operation
 
-### 5.1 Health Check (Always Run First)
+### 5.1 Health Check
 
 ```bash
 cd /Users/kevin/Desktop/Ai_agent_trade_claude
@@ -1364,6 +1374,34 @@ VWAP = Σ(Price × Volume) / Σ(Volume)
 
 **Usage:** Fair value reference
 
+#### **ADX (Average Directional Index)**
+
+Measures trend strength (0-100).
+
+- ADX > 25: Strong trend
+- ADX < 20: Weak trend (ranging)
+
+#### **OFI (Order Flow Imbalance)**
+
+Measures net flow of limit orders at BBO (Best Bid/Offer).
+
+- Positive: Net buying pressure
+- Negative: Net selling pressure
+
+#### **RSI (Relative Strength Index)**
+
+Momentum oscillator (0-100).
+>
+- > 70: Overbought (potential sell)
+- < 30: Oversold (potential buy)
+
+#### **Bollinger Bands**
+
+Volatility bands placed above and below a moving average.
+
+- Price touching upper band: Overbought
+- Price touching lower band: Oversold
+
 ### 11.2 Market Regimes
 
 | Regime | Characteristics | Strategy |
@@ -1472,55 +1510,112 @@ class KlineEvent(BaseModel):
 class MarketFeatures(BaseModel):
     timestamp: datetime
     symbol: str
+
+    # Price features
     price: float
     ema_9: float | None
     ema_50: float | None
+    ema_200: float | None
+
+    # Volatility features
     atr: float | None
     realized_volatility: float | None
+    adx: float | None
+
+    # Microstructure features
     orderbook_imbalance: float | None
     spread: float | None
     vwap: float | None
+    
+    # Statistical features
+    hurst: float | None
+    is_stationary: bool | None
+    volatility_forecast: float | None
+    
+    # Order Flow Imbalance
+    ofi: float | None
+    ofi_sma: float | None
+    
+    # Mean Reversion features
+    rsi: float | None
+    bollinger_upper: float | None
+    bollinger_mid: float | None
+    bollinger_lower: float | None
 
 class MarketRegime(BaseModel):
     timestamp: datetime
-    symbol: str
     regime: Literal["TRENDING", "RANGING", "HIGH_VOLATILITY", "LOW_VOLATILITY", "UNKNOWN"]
-    confidence: float  # 0.0-1.0
-    reasoning: str
+    confidence: float
+    volatility_percentile: float | None
+    trend_strength: float | None
+
+class Position(BaseModel):
+    symbol: str
+    instrument_type: Literal["SPOT", "FUTURE"]
+    side: Literal["LONG", "SHORT"]
+    quantity: float
+    entry_price: float
+    current_price: float
+    unrealized_pnl: float
+    stop_loss: float | None
+    take_profit: float | None
+    trailing_stop_distance: float | None
+    timestamp: datetime
+
+class RiskLimits(BaseModel):
+    max_position_size: float
+    max_drawdown_percent: float
+    max_daily_loss: float
+    max_leverage: float
+    target_volatility: float
+    position_sizing_method: Literal["FIXED", "VOLATILITY", "KELLY", "VOL_TARGET"]
 
 class Signal(BaseModel):
     timestamp: datetime
     symbol: str
+    instrument_type: Literal["SPOT", "FUTURE"]
     strategy: str
     direction: Literal["LONG", "SHORT", "NEUTRAL"]
-    strength: float  # 0.0-1.0
-    confidence: float  # 0.0-1.0
-    reasoning: str
+    strength: float
+    confidence: float
+    entry_price: float | None
+    stop_loss: float | None
+    take_profit: float | None
+    trailing_stop_distance: float | None
+    suggested_quantity: float | None
+    reasoning: str | None
 
 class Order(BaseModel):
     symbol: str
-    side: Literal["buy", "sell"]
-    order_type: Literal["market", "limit"]
+    instrument_type: Literal["SPOT", "FUTURE"]
+    side: Literal["BUY", "SELL"]
+    order_type: Literal["MARKET", "LIMIT", "STOP_LOSS", "TAKE_PROFIT"]
     quantity: float
-    price: float | None = None
+    price: float | None
+    stop_price: float | None
+    stop_loss: float | None
+    take_profit: float | None
+    time_in_force: str
+    client_order_id: str | None
+    execution_style: Literal["PASSIVE", "AGGRESSIVE"]
 
 class ExecutionResult(BaseModel):
     timestamp: datetime
-    order_id: str
-    symbol: str
-    side: Literal["buy", "sell"]
-    quantity: float
-    price: float | None
+    order_id: str | None
     success: bool
+    filled_quantity: float
+    filled_price: float | None
+    status: str
     error_message: str | None
 
 class PortfolioState(BaseModel):
     timestamp: datetime
     balance: float
     equity: float
-    positions: dict[str, float]
-    unrealized_pnl: float
-    realized_pnl: float
+    positions: list[Position]
+    open_orders: list[Order]
+    daily_pnl: float
+    total_pnl: float
 ```
 
 ### 11.8 API Endpoints (Future)

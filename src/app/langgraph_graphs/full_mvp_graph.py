@@ -1,7 +1,8 @@
-"""Full MVP trading graph - complete pipeline."""
+    """Full MVP trading graph - complete pipeline."""
 from typing import TypedDict, Literal
 from datetime import datetime
 from langgraph.graph import StateGraph, END
+from app.nodes.ts_jepa_node import world_model_node
 
 from app.schemas.events import TradeEvent, OrderbookUpdate, KlineEvent
 from app.schemas.models import (
@@ -33,6 +34,9 @@ class FullMVPState(TypedDict):
 
     # Features
     features: MarketFeatures | None
+
+    # World Model
+    market_latent_state: list[float] | None
 
     # Regime
     regime: MarketRegime | None
@@ -93,6 +97,7 @@ def create_full_mvp_graph() -> StateGraph:
     # Add all nodes (avoid state key names)
     workflow.add_node("ingest", ingest_market_data_node)
     workflow.add_node("compute_features", compute_features_node)
+    workflow.add_node("world_model", world_model_node)
     workflow.add_node("classify_regime", classify_regime_node)
     workflow.add_node("route_strategy", route_strategy_node)
     workflow.add_node("momentum", momentum_strategy_node)
@@ -105,7 +110,8 @@ def create_full_mvp_graph() -> StateGraph:
     # Define linear edges
     workflow.set_entry_point("ingest")
     workflow.add_edge("ingest", "compute_features")
-    workflow.add_edge("compute_features", "classify_regime")
+    workflow.add_edge("compute_features", "world_model")
+    workflow.add_edge("world_model", "classify_regime")
     workflow.add_edge("classify_regime", "route_strategy")
 
     # Conditional edge from router to strategy

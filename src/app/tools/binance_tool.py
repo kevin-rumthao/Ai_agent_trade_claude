@@ -11,6 +11,9 @@ except Exception:  # pragma: no cover - test stub path
     class BinanceAPIException(Exception):  # type: ignore
         """Fallback stub when python-binance is not installed."""
 
+import ssl
+import certifi
+import aiohttp
 from app.config import settings
 from app.schemas.events import TradeEvent, OrderbookUpdate, KlineEvent
 from app.schemas.models import Order, ExecutionResult, PortfolioState, Position
@@ -26,16 +29,22 @@ class BinanceTool:
 
     async def initialize(self) -> None:
         """Initialize the Binance client."""
+        # Create an SSL context using certifi's CA bundle
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        
         if settings.testnet:
             self.client = await AsyncClient.create(
                 api_key=settings.binance_api_key,
                 api_secret=settings.binance_api_secret,
-                testnet=True
+                testnet=True,
+                session_params={"connector": connector}
             )
         else:
             self.client = await AsyncClient.create(
                 api_key=settings.binance_api_key,
-                api_secret=settings.binance_api_secret
+                api_secret=settings.binance_api_secret,
+                session_params={"connector": connector}
             )
 
     async def close(self) -> None:

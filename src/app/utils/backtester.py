@@ -227,7 +227,9 @@ class Backtester:
                 "total_trades": 0,
                 "win_rate": 0.0,
                 "max_drawdown": 0.0,
-                "sharpe_ratio": 0.0
+                "sharpe_ratio": 0.0,
+                "final_equity": self.initial_balance,
+                "avg_win_loss_ratio": 0.0
             }
 
         final_equity = self.equity_curve[-1][1]

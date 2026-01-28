@@ -411,29 +411,32 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
         adx = feature_engine.compute_adx(period=14)
         
         # --- GARCH DYNAMIC BANDS LOGIC ---
+        # Only needed for Mean Reversion
         std_dev_mult = settings.bollinger_std_dev
-        closes_list = list(feature_engine.close_buffer)
         
-        if len(closes_list) > 30:
-            returns = [(closes_list[i] - closes_list[i-1])/closes_list[i-1] for i in range(1, len(closes_list))]
-            try:
-                vol_forecast = forecast_volatility(returns, method='GARCH')
-            except:
-                vol_forecast = None
+        if strategy_name == "mean_reversion":
+            closes_list = list(feature_engine.close_buffer)
             
-            # Dynamic Logic
-            if vol_forecast is not None:
-                # Calculate recent realized sigma (1-period)
-                if len(closes_list) > 1:
-                    r_slice = returns
-                    if r_slice:
-                        recent_sigma = float(np.std(r_slice))
-                        
-                        if recent_sigma > 0:
-                            ratio = vol_forecast / recent_sigma
-                            if ratio > 1.05: # Threshold
-                                ratio = min(ratio, 2.0)
-                                std_dev_mult = settings.bollinger_std_dev * ratio
+            if len(closes_list) > 30:
+                returns = [(closes_list[i] - closes_list[i-1])/closes_list[i-1] for i in range(1, len(closes_list))]
+                try:
+                    vol_forecast = forecast_volatility(returns, method='GARCH')
+                except:
+                    vol_forecast = None
+                
+                # Dynamic Logic
+                if vol_forecast is not None:
+                    # Calculate recent realized sigma (1-period)
+                    if len(closes_list) > 1:
+                        r_slice = returns
+                        if r_slice:
+                            recent_sigma = float(np.std(r_slice))
+                            
+                            if recent_sigma > 0:
+                                ratio = vol_forecast / recent_sigma
+                                if ratio > 1.05: # Threshold
+                                    ratio = min(ratio, 2.0)
+                                    std_dev_mult = settings.bollinger_std_dev * ratio
 
         bb_res = feature_engine.compute_bollinger_bands(
             list(feature_engine.price_buffer),
@@ -463,11 +466,32 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
         )
         
         # 3.2 Run Strategy
+        # 3.2 Run Strategy
+        
+        # Inject Current Signal/Position State for Hysteresis
+        current_active_signal = None
+        if backtester.positions:
+            pos = backtester.positions[0]
+            current_active_signal = Signal(
+                timestamp=kline.timestamp,
+                symbol=symbol,
+                strategy=strategy_name,
+                direction=pos.side, # type: ignore
+                strength=1.0,
+                confidence=1.0,
+                entry_price=pos.entry_price,
+                stop_loss=pos.stop_loss,
+                take_profit=pos.take_profit,
+                trailing_stop_distance=pos.trailing_stop_distance,
+                reasoning="Existing Position (Backtest State)"
+            )
+
         state = {
             "features": features,
             "klines": processed_klines, # Strategy needs history for confirmation
             "symbol": symbol,
             "timestamp": kline.timestamp,
+            "signal": current_active_signal,
             "signals": []
         }
         
