@@ -103,32 +103,32 @@ async def mean_reversion_strategy_node(state: MeanReversionState) -> MeanReversi
             if was_below and is_above and rsi < rsi_threshold_long:
                 # Phase 4 Alpha: Check OFI Confirmation
                 # We need buying pressure (OFI > 0) to confirm the reversal
-                if ofi is not None and ofi > 0:
-                    direction = "LONG"
-                    strength = 0.9 # High confidence reversal
-                    confidence = 0.90
-                    reasoning = (
-                        f"Mean Reversion Long (Confirmed): Price returned to band with Buying Pressure "
-                        f"(OFI {ofi:.2f}). RSI {rsi:.2f}"
-                    )
-                elif ofi is None:
-                    # Fallback
-                    direction = "LONG"
-                    strength = 0.7
-                    confidence = 0.75
-                    reasoning = (
-                        f"Mean Reversion Long (Unconfirmed): Price returned to band (No OFI). RSI {rsi:.2f}"
-                    )
-                else: 
-                     # OFI < 0: Selling pressure still dominant
-                     reasoning = (
-                        f"Mean Reversion Long Rejected: Price returned but Selling Pressure remains (OFI {ofi:.2f})"
-                     )
-                     # Stay Neutral or take very small position? Stay Neutral.
-                     direction = "NEUTRAL"
-
+                # Calculate Dynamic Risk/Reward
+                atr_val = features.atr if features.atr else price * 0.005 # Fallback 0.5%
+                
+                # Stop Loss: Tight, based on volatility (1.5 ATR)
+                stop_distance = atr_val * 1.5
+                stop_loss = price - stop_distance
+                
+                # Target: Mid Band
                 take_profit = bb_mid
-                stop_loss = price * 0.98  # 2% stop or use ATR
+                potential_reward = take_profit - price
+                
+                # R:R Filter
+                if potential_reward > (stop_distance * 0.8): # Accept 0.8 R:R min due to high WR
+                    direction = "LONG"
+                    # Strength scaling
+                    strength = 0.9 if (ofi and ofi > 0) else 0.7
+                    confidence = 0.9 if (ofi and ofi > 0) else 0.75
+                    
+                    reasoning_base = "Mean Reversion Long"
+                    reasoning_extra = f"(Confirmed by OFI {ofi:.2f})" if (ofi and ofi > 0) else "(No OFI)"
+                    reasoning = f"{reasoning_base} {reasoning_extra}: Volatility Risk {stop_distance:.2f}, Reward {potential_reward:.2f}"
+                else:
+                     direction = "NEUTRAL"
+                     reasoning = f"Skipped Long: Poor R:R (Risk {stop_distance:.2f} > Reward {potential_reward:.2f})"
+                     stop_loss = None
+                     take_profit = None
 
         # SHORT SIGNAL Logic
         # 1. Previous Close > Prev Upper Band (Was Overbought)
@@ -144,31 +144,33 @@ async def mean_reversion_strategy_node(state: MeanReversionState) -> MeanReversi
             
             if was_above and is_below and rsi > rsi_threshold_short:
                  # Phase 4 Alpha: Check OFI
-                 # We need selling pressure (OFI < 0) to confirm the reversal
-                if ofi is not None and ofi < 0:
-                    direction = "SHORT"
-                    strength = 0.9
-                    confidence = 0.90
-                    reasoning = (
-                        f"Mean Reversion Short (Confirmed): Price returned to band with Selling Pressure "
-                        f"(OFI {ofi:.2f}). RSI {rsi:.2f}"
-                    )
-                elif ofi is None:
-                    direction = "SHORT"
-                    strength = 0.7
-                    confidence = 0.75
-                    reasoning = (
-                        f"Mean Reversion Short (Unconfirmed): Price returned to band (No OFI). RSI {rsi:.2f}"
-                    )
-                else:
-                    # OFI > 0: Buying pressure still dominant
-                    reasoning = (
-                        f"Mean Reversion Short Rejected: Price returned but Buying Pressure remains (OFI {ofi:.2f})"
-                    )
-                    direction = "NEUTRAL"
-
+                
+                # Calculate Dynamic Risk/Reward
+                atr_val = features.atr if features.atr else price * 0.005
+                
+                # Stop Loss: Tight (1.5 ATR)
+                stop_distance = atr_val * 1.5
+                stop_loss = price + stop_distance
+                
+                # Target: Mid Band
                 take_profit = bb_mid
-                stop_loss = price * 1.02 # 2% stop
+                potential_reward = price - take_profit
+                
+                # R:R Filter
+                if potential_reward > (stop_distance * 0.8):
+                    direction = "SHORT"
+                    
+                    strength = 0.9 if (ofi and ofi < 0) else 0.7
+                    confidence = 0.9 if (ofi and ofi < 0) else 0.75
+                    
+                    reasoning_base = "Mean Reversion Short"
+                    reasoning_extra = f"(Confirmed by OFI {ofi:.2f})" if (ofi and ofi < 0) else "(No OFI)"
+                    reasoning = f"{reasoning_base} {reasoning_extra}: Volatility Risk {stop_distance:.2f}, Reward {potential_reward:.2f}"
+                else:
+                    direction = "NEUTRAL"
+                    reasoning = f"Skipped Short: Poor R:R (Risk {stop_distance:.2f} > Reward {potential_reward:.2f})"
+                    stop_loss = None
+                    take_profit = None
 
     # If still Neutral, provide reasoning if near bands
     if direction == "NEUTRAL":

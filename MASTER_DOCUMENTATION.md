@@ -1,7 +1,7 @@
-**Version**: 1.3 (Dev)
-**Last Updated**: January 28, 2026
+**Version**: 1.4 (Dev)
+**Last Updated**: February 3, 2026
 **Author**: Kevin
-**Status**: Development
+**Status**: Development (RL Beta)
 
 ---
 
@@ -56,6 +56,7 @@ result = await trading_provider.execute_order(order)
 docker compose up --build
 ```
 
+- **Reinforcement Learning**: (Beta) Custom Gym environment and PPO/JEPA training pipeline.
 - **Production Ready**: Structured logging, error handling, and graceful shutdown sequences.  
 
 ### 1.3 Trading Pipeline
@@ -145,6 +146,18 @@ Ai_agent_trade_claude/
 │   │   ├── llm_tool.py              # Gemini LLM wrapper
 │   │   ├── trading_provider.py      # Provider abstraction
 │   │   └── mock_tool.py             # Simulation tool
+│   │
+│   ├── models/                      # ML Models & Weights
+│   │   ├── ts_jepa.py               # JEPA Architecture Definition
+│   │   └── checkpoints/             # Model checkpoints
+│   │
+│   ├── rl/                          # Reinforcement Learning
+│   │   └── trading_env.py           # Gymnasium Trading Environment
+│   │
+│   ├── training/                    # Training Scripts
+│   │   ├── train_jepa.py            # Train World Model
+│   │   ├── train_rl.py              # Train PPO Agent
+│   │   └── pretrain_rl_imitation.py # Behavior Cloning from experts
 │   │
 │   └── utils/                       # Utilities
 │       ├── backtester.py            # Backtesting engine
@@ -252,6 +265,12 @@ Ai_agent_trade_claude/
 - Predicts future states in latent space
 - Inputs: Normalized technical features
 - Outputs: Latent vector describing market structure
+
+#### **RL Trading Environment**
+
+- **Gymnasium-compatible** environment for RL training.
+- Simulates trading execution, PnL calculation, and state observation.
+- Used for training PPO agents and backtesting RL strategies.
 
 ### 2.3 Data Flow
 
@@ -580,22 +599,18 @@ MAX_DAILY_LOSS=5000.0
 
 ## 5. Operation
 
-### 5.1 Health Check
+### 5.1 Health Check (Always Run First)
 
 ```bash
 cd /Users/kevin/Desktop/Ai_agent_trade_claude
 poetry run python -m app.healthcheck
 ```
 
-**Expected Output:**
+### 5.2 Command Reference
 
-```bash
-Running external health checks (ALPACA, Gemini)...
-✅ All health checks passed
-{'trading_provider': {'provider': 'alpaca', 'symbol': 'BTC/USD', 'ok': True, 'portfolio_balance': 100000.0, 'portfolio_equity': 100000.0, 'orderbook_levels': 10, 'recent_trades': 0, 'klines': 5}, 'llm': {'model': 'gemini-pro-latest', 'regime': 'TRENDING', 'confidence': 0.5, 'ok': True}, 'ok': True}
-```
+For a complete list of commands, including data management and advanced backtesting options, typically used by developers, see the **[CLI Commands Cheat Sheet](Commands_cheat-sheet.md)**.
 
-### 5.2 Interactive Dashboard
+### 5.3 Interactive Dashboard
 
 The system includes a rich, reliable command-line interface (CLI) for monitoring and control, designed with user engagement elements:
 
@@ -679,6 +694,8 @@ poetry run python scripts/run_backtest.py --days 7 --features_file results/ofi_d
 - `--features_file`: Path to external CSV with pre-calculated features (e.g. OFI data)
 
 ### 5.5 Example Output
+
+m
 
 ```bash
 2025-11-17 10:00:00 - __main__ - INFO - LangGraph Trading Agent Starting...
@@ -1031,12 +1048,6 @@ LOG_LEVEL=DEBUG poetry run python -m app.main
 ### 10.1 High Priority
 
 #### **1. Additional Trading Strategies**
-
-##### Mean Reversion Strategy
-
-- ✅ Implemented in Version 1.1
-- Uses RSI and Bollinger Bands
-- Buys oversold, sell overbought
 
 ##### Scalping Strategy
 

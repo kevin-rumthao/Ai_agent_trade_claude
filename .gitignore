@@ -75,3 +75,8 @@ node_modules/
 data/
 results/
 docs/
+*.zip
+*.pth
+*.pkl
+src/app/models/checkpoints/
+src/app/models/*.bak

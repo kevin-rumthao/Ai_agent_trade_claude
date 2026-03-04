@@ -86,7 +86,7 @@ async def momentum_strategy_node(state: MomentumState) -> MomentumState:
 
     # 1. Regime Check
     # Use relaxed threshold if we are already in a trade
-    adx_threshold = MAINTAIN_ADX_THRESHOLD if current_direction != "NEUTRAL" else ENTRY_ADX_THRESHOLD
+    adx_threshold = MAINTAIN_ADX_THRESHOLD if current_direction != "NEUTRAL" else 20.0 # Relaxed Entry to 20
     
     if adx and adx < adx_threshold:
         return {
@@ -101,6 +101,17 @@ async def momentum_strategy_node(state: MomentumState) -> MomentumState:
                 reasoning=f"Regime Filter: ADX ({adx:.2f}) < {adx_threshold}. Chop."
             )]
         }
+
+    # 1.5 World Model Filter (Experimental)
+    # Check if the JEPA model sees a structural reason to avoid trade
+    latent_state = state.get("market_latent_state")
+    if latent_state:
+        # Assuming dimension 0 indicates structural trend strength (-1 to 1)
+        # If neutral (close to 0), we might want to be careful
+        trend_score = latent_state[0]
+        if abs(trend_score) < 0.1: # Very weak structural signal
+             # We don't block completely, maybe just lower confidence
+             pass 
 
     # 2. Trend Filter (EMA 200) - Keep strict for now
     is_bull_trend = (ema_200 and price > ema_200) if ema_200 else True 
@@ -155,9 +166,10 @@ async def momentum_strategy_node(state: MomentumState) -> MomentumState:
     else:
         # Check Strict Entry Conditions
         
-        # RSI Entry
-        is_rsi_long_entry = (rsi is not None and ENTRY_RSI_LONG_MIN < rsi < ENTRY_RSI_LONG_MAX) if rsi else True
-        is_rsi_short_entry = (rsi is not None and ENTRY_RSI_SHORT_MIN < rsi < ENTRY_RSI_SHORT_MAX) if rsi else True
+        # RSI Entry (Widened)
+        # 45-75 for Long, 25-55 for Short
+        is_rsi_long_entry = (rsi is not None and 45.0 < rsi < 75.0) if rsi else True
+        is_rsi_short_entry = (rsi is not None and 25.0 < rsi < 55.0) if rsi else True
 
         # Long Entry
         if ema_9 > ema_50 and price > ema_9:

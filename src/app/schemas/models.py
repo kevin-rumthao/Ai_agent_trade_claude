@@ -42,6 +42,12 @@ class MarketFeatures(BaseModel):
     
     # Phase 6: Strategy Optimization
     ofi_sma: Optional[float] = None
+    
+    # Phase 7: RL / Regime Features
+    vol_regime: Optional[float] = None
+    trend_strength: Optional[float] = None
+    momentum_5: Optional[float] = None
+    momentum_20: Optional[float] = None
 
 
 class MarketRegime(BaseModel):

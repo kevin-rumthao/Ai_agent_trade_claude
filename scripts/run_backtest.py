@@ -43,9 +43,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.config import settings
 from app.tools.binance_tool import binance_tool
 from app.utils.backtester import Backtester
+from app.utils.data_split import split_data_temporal, get_split_by_name
 from app.nodes.feature_engineering import FeatureEngine, compute_features_node
+from app.nodes.ts_jepa_node import world_model_node, load_jepa_model
 from app.nodes.momentum_policy import momentum_strategy_node
 from app.nodes.mean_reversion_policy import mean_reversion_strategy_node
+from app.nodes.rl_agent_node import rl_agent_node
 from app.utils.statistics import forecast_volatility
 from app.schemas.events import KlineEvent
 from app.schemas.models import MarketFeatures, Signal
@@ -93,91 +96,90 @@ def generate_synthetic_data(symbol: str, days: int) -> list[KlineEvent]:
     print(f"Generated {len(klines)} synthetic candles.")
     return klines
 
-async def fetch_data(symbol: str, days: int, provider: str, start_time: datetime = None, end_time: datetime = None, data_file: str = None):
+async def fetch_data(symbol: str, days: int, provider: str, start_time: datetime = None, end_time: datetime = None, data_file: str = None, split: str = None):
     """Fetch historical klines."""
     if data_file:
-         print(f"Loading data from local file: {data_file}...")
-         if not os.path.exists(data_file):
-             print(f"Error: File {data_file} not found.")
-             return []
-             
-         try:
-             df = pd.read_csv(data_file)
-             df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
-             df = df.sort_values('timestamp')
-             
-             # Filter by symbol if present
-             if 'symbol' in df.columns:
-                 df = df[df['symbol'] == symbol]
-                 
-             # Filter by time range if provided
-             if days:
-                 end_time = df['timestamp'].max()
-                 start_time = end_time - timedelta(days=days)
-                 df = df[df['timestamp'] >= start_time]
-                 print(f"Filtered to last {days} days: {len(df)} candles.")
-             
-             if start_time and 'timestamp' in df.columns:
-                 df = df[df['timestamp'] >= start_time]
-             if end_time:
-                 df = df[df['timestamp'] <= end_time]
-                 
-             klines = []
-             for _, row in df.iterrows():
-                 # Handle different formats
-                 # 1. Standard OHLCV
-                 if all(c in row for c in ['open', 'high', 'low', 'close']):
-                     open_p = float(row['open'])
-                     high_p = float(row['high'])
-                     low_p = float(row['low'])
-                     close_p = float(row['close'])
-                 # 2. "Price" only (fetch_data.py format)
-                 elif 'price' in row:
-                     p = float(row['price'])
-                     open_p = high_p = low_p = close_p = p
-                 else:
-                     continue
-                     
-                 vol = float(row['volume']) if 'volume' in row else 0.0
-                 
-                 klines.append(KlineEvent(
-                     timestamp=row['timestamp'],
-                     symbol=symbol,
-                     open=open_p,
-                     high=high_p,
-                     low=low_p,
-                     close=close_p,
-                     volume=vol,
-                     interval="1m" # Assumption
-                 ))
-                 
-             print(f"Loaded {len(klines)} candles from file.")
-             return klines
-             
-         except Exception as e:
-             print(f"Error reading data file: {e}")
-             return []
+        print(f"Loading data from local file: {data_file}...")
+        if not os.path.exists(data_file):
+            print(f"Error: File {data_file} not found.")
+            return []
+            
+        try:
+            df = pd.read_csv(data_file)
+            # Handle mixed date formats (Space vs T separator)
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed', utc=True)
+            df = df.sort_values('timestamp')
+            
+            # Apply data split if requested
+            if split:
+                print(f"Applying {split} split...")
+                # Changed to 90/5/5 to match training
+                train_df, val_df, test_df = split_data_temporal(df, train_pct=0.9, val_pct=0.05)
+                df = get_split_by_name(train_df, val_df, test_df, split)
+                print(f"Using {len(df)} rows from {split} split.")
+            
+            # Filter by symbol if present
+            if 'symbol' in df.columns:
+                df = df[df['symbol'] == symbol]
+                
+            # Filter by time range if provided (only if not using split)
+            if days and not split:
+                end_time = df['timestamp'].max()
+                start_time = end_time - timedelta(days=days)
+                df = df[df['timestamp'] >= start_time]
+                print(f"Filtered to last {days} days: {len(df)} candles.")
+            
+            if start_time and 'timestamp' in df.columns:
+                df = df[df['timestamp'] >= start_time]
+            if end_time:
+                df = df[df['timestamp'] <= end_time]
+                
+            klines = []
+            for _, row in df.iterrows():
+                # Handle different formats
+                # 1. Standard OHLCV
+                if all(c in row for c in ['open', 'high', 'low', 'close']):
+                    open_p = float(row['open'])
+                    high_p = float(row['high'])
+                    low_p = float(row['low'])
+                    close_p = float(row['close'])
+                # 2. "Price" only (fetch_data.py format)
+                elif 'price' in row:
+                    p = float(row['price'])
+                    open_p = high_p = low_p = close_p = p
+                else:
+                    continue
+                    
+                vol = float(row['volume']) if 'volume' in row else 0.0
+                
+                klines.append(KlineEvent(
+                    timestamp=row['timestamp'],
+                    symbol=symbol,
+                    open=open_p,
+                    high=high_p,
+                    low=low_p,
+                    close=close_p,
+                    volume=vol,
+                    interval="1m" # Assumption
+                ))
+                
+            print(f"Loaded {len(klines)} candles from file.")
+            return klines
+            
+        except Exception as e:
+            print(f"Error reading data file: {e}")
+            return []
 
     print(f"Fetching {days} days of data for {symbol} from {provider}...")
     
-    limit = days * 24 * 60  # Minutes
-    # Note: Providers might have limits on how many klines per request.
-    # For simplicity, we'll fetch a smaller batch or loop.
-    # Binance limit is 1000. Alpaca is similar.
-    limit = days * 24 * 60  # Minutes
-    if start_time and end_time:
-         # Limit is handled by range usually, but API takes limit per request.
-         # For simplicity in this demo, we'll ask for a large limit or rely on provider default.
-         # Binance API limit is 1000. 
-         # To get full range we need pagination, or just ask for 1000 from start.
-         # Let's try to ask for 1000 from start_time.
-         # Ideally we should loop.
-         limit = 1000 
-    # To get days, we'd need pagination.
-    
-    if days > 1:
-        print("Warning: Simple fetcher only retrieves last 1000 candles (approx 16 hours).")
-    
+    # Calculate start time if not provided
+    if not start_time:
+        start_time = datetime.now() - timedelta(days=days)
+    if not end_time:
+        end_time = datetime.now()
+        
+    print(f"Time Range: {start_time} -> {end_time}")
+
     if provider == "binance":
         # Force Mainnet for historical data
         original_testnet = settings.testnet
@@ -189,19 +191,13 @@ async def fetch_data(symbol: str, days: int, provider: str, start_time: datetime
             all_klines = []
             current_start = start_time
             
-            # Determine total duration if start/end provided (to show progress)
-            if start_time and end_time:
-                total_duration = (end_time - start_time).total_seconds()
+            total_duration = (end_time - start_time).total_seconds()
             
             while True:
-                # If no range provided (default simple mode), use simple fetch
-                if not start_time or not end_time:
-                    klines = await binance_tool.get_klines(symbol, interval="1m", limit=limit)
-                    all_klines.extend(klines)
-                    break
-                    
-                # Range mode: Fetch chunk
+                # Calculate chunk limit - max 1000 per request
+                # We simply request 1000 from current_start
                 print(f"Fetching chunk from {current_start}...")
+                
                 klines = await binance_tool.get_klines(
                     symbol, 
                     interval="1m", 
@@ -221,25 +217,28 @@ async def fetch_data(symbol: str, days: int, provider: str, start_time: datetime
                      progress = (last_kline_time - start_time).total_seconds() / total_duration * 100
                      print(f"Progress: {progress:.1f}% ({len(all_klines)} candles)")
                 
-                # Break if we reached end_time or got fewer candles than limit
-                if last_kline_time >= end_time or len(klines) < 1000:
+                # Break if we reached near end_time (e.g. within 1 min)
+                if last_kline_time >= end_time - timedelta(minutes=1):
                     break
-
+                    
+                # Continue from next minute
                 current_start = last_kline_time + timedelta(minutes=1)
                 
-                # Safety break
-                if len(all_klines) > 50000: 
-                     print("Hit safety limit (50k candles). Stopping.")
+                # Use a somewhat reasonable max limit to prevent infinite loops (e.g. 1 year of minutes = 500k)
+                if len(all_klines) > 525600: 
+                     print("Hit max safety limit (~1 year). Stopping.")
                      break
+                     
         finally:
              await binance_tool.close()
              settings.testnet = original_testnet # Restore
              
-        klines = all_klines # Assign back variable
+        klines = all_klines
         
     elif provider == "mock":
         return generate_synthetic_data(symbol, days)
     else:
+        # Alpaca Logic
         await alpaca_tool.initialize()
         klines = await alpaca_tool.get_klines(symbol, interval="1m", limit=1000)
         await alpaca_tool.close()
@@ -247,7 +246,7 @@ async def fetch_data(symbol: str, days: int, provider: str, start_time: datetime
     print(f"Fetched {len(klines)} candles.")
     return klines
 
-async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str, spread: float, slippage: float, features_file: str = None, data_file: str = None):
+async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str, spread: float, slippage: float, features_file: str = None, data_file: str = None, split: str = None):
     # 1. Determine Range from Features (if any)
     start_time = None
     end_time = None
@@ -277,7 +276,7 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
             return
 
     # 1. Fetch Data
-    klines = await fetch_data(symbol, days, provider, start_time, end_time, data_file)
+    klines = await fetch_data(symbol,days, provider, start_time, end_time, data_file, split)
     
     if not klines:
         print("No data fetched. Exiting.")
@@ -410,6 +409,9 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
         rsi = feature_engine.compute_rsi(list(feature_engine.close_buffer), settings.rsi_period)
         adx = feature_engine.compute_adx(period=14)
         
+        # Compute Regime Features (Trend, Momentum, Vol Regime)
+        regime_feats = feature_engine.compute_regime_features()
+        
         # --- GARCH DYNAMIC BANDS LOGIC ---
         # Only needed for Mean Reversion
         std_dev_mult = settings.bollinger_std_dev
@@ -462,12 +464,25 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
             bollinger_mid=bb_mid,
             bollinger_lower=bb_lower,
             ofi=input_ofi if input_ofi is not None else None,
-            ofi_sma=feature_engine.ofi_sma # Injected Smoothed OFI
+            ofi_sma=feature_engine.ofi_sma, # Injected Smoothed OFI
+            
+            # Regime Features
+            vol_regime=regime_feats.get("vol_regime"),
+            trend_strength=regime_feats.get("trend_strength"),
+            momentum_5=regime_feats.get("momentum_5"),
+            momentum_20=regime_feats.get("momentum_20")
         )
         
-        # 3.2 Run Strategy
-        # 3.2 Run Strategy
+        # 3.1.5 Run World Model (TS-JEPA)
+        # Construct temporary state for world model
+        wm_state = {
+            "features": features
+        }
+        wm_result = await world_model_node(wm_state)
+        latent_state = wm_result.get("market_latent_state")
         
+        # 3.2 Run Strategy
+        # ...        
         # Inject Current Signal/Position State for Hysteresis
         current_active_signal = None
         if backtester.positions:
@@ -492,13 +507,16 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
             "symbol": symbol,
             "timestamp": kline.timestamp,
             "signal": current_active_signal,
-            "signals": []
+            "signals": [],
+            "market_latent_state": latent_state
         }
         
         if strategy_name == "momentum":
             result = await momentum_strategy_node(state) # type: ignore
         elif strategy_name == "mean_reversion":
             result = await mean_reversion_strategy_node(state) # type: ignore
+        elif strategy_name == "rl_agent":
+            result = await rl_agent_node(state) # type: ignore
         else:
             print(f"Unknown strategy: {strategy_name}")
             return
@@ -572,15 +590,16 @@ async def run_backtest(symbol: str, days: int, strategy_name: str, provider: str
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Backtest")
     parser.add_argument("--symbol", type=str, default="BTCUSDT", help="Trading symbol")
-    parser.add_argument("--days", type=int, default=1, help="Days of data to fetch")
-    parser.add_argument("--strategy", type=str, default="momentum", choices=["momentum", "mean_reversion"], help="Strategy to test")
+    parser.add_argument("--days", type=int, default=30, help="Days of data to fetch")
+    parser.add_argument("--strategy", type=str, default="momentum", choices=["momentum", "mean_reversion", "rl_agent"], help="Strategy to test")
     parser.add_argument("--provider", type=str, default="binance", choices=["binance", "alpaca", "mock"], help="Data provider")
     parser.add_argument("--spread", type=float, default=0.0005, help="Spread percentage (0.0005 = 0.05%)")
     parser.add_argument("--slippage", type=float, default=0.0005, help="Slippage percentage (0.0005 = 0.05%)")
     parser.add_argument("--visual", action="store_true", help="Show visualization plot")
     parser.add_argument("--features_file", type=str, default=None, help="Path to external CSV with pre-calculated features (OFI)")
     parser.add_argument("--data_file", type=str, default=None, help="Path to local CSV data file (e.g., data/backtest_data.csv)")
+    parser.add_argument("--split", type=str, default=None, choices=["train", "val", "test"], help="Data split to use for backtest (None = full data)")
     
     args = parser.parse_args()
     
-    asyncio.run(run_backtest(args.symbol, args.days, args.strategy, args.provider, args.spread, args.slippage, args.features_file, args.data_file))
+    asyncio.run(run_backtest(args.symbol, args.days, args.strategy, args.provider, args.spread, args.slippage, args.features_file, args.data_file, args.split))

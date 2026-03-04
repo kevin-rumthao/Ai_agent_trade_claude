@@ -18,12 +18,13 @@ def load_jepa_model():
     model = TS_JEPA(input_dim=12, embed_dim=64)
     
     try:
-        # Load weights (You will train this later)
-        # model.load_state_dict(torch.load("models/jepa_latest.pth"))
-        print("⚠️ JEPA weights not found, using initialized weights (Random State)")
+        # Load weights (Trained)
+        model_path = "src/app/models/jepa_latest.pth"
+        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        print(f"✅ JEPA weights loaded from {model_path}")
         model.eval()
     except Exception as e:
-        print(f"Error loading JEPA: {e}")
+        print(f"⚠️ JEPA weights not found at {model_path}, using Random State. Error: {e}")
     
     _jepa_model = model
     return _jepa_model

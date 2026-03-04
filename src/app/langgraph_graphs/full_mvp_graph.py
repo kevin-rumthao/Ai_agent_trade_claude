@@ -1,4 +1,4 @@
-    """Full MVP trading graph - complete pipeline."""
+"""Full MVP trading graph - complete pipeline."""
 from typing import TypedDict, Literal
 from datetime import datetime
 from langgraph.graph import StateGraph, END
@@ -20,6 +20,7 @@ from app.nodes.regime_classifier import classify_regime_node
 from app.nodes.strategy_router import route_strategy_node, get_strategy_node_name
 from app.nodes.momentum_policy import momentum_strategy_node
 from app.nodes.mean_reversion_policy import mean_reversion_strategy_node
+from app.nodes.rl_agent_node import rl_agent_node # NEW
 from app.nodes.risk_manager import risk_management_node
 from app.nodes.execution_agent import execution_agent_node
 from app.nodes.hedge_agent import hedge_agent_node
@@ -42,7 +43,7 @@ class FullMVPState(TypedDict):
     regime: MarketRegime | None
 
     # Strategy routing
-    selected_strategy: Literal["momentum", "mean_reversion", "neutral"] | None
+    selected_strategy: Literal["momentum", "mean_reversion", "rl_agent", "neutral"] | None
 
     # Signal
     signals: list[Signal]
@@ -88,7 +89,7 @@ def create_full_mvp_graph() -> StateGraph:
     Create the complete MVP trading graph.
 
     Flow:
-    START -> ingest -> features -> regime -> router -> [momentum|mean_reversion|neutral] -> risk -> execution -> END
+    START -> ingest -> features -> regime -> router -> [momentum|mean_reversion|rl_agent|neutral] -> risk -> execution -> END
 
     The router uses conditional edges to select the appropriate strategy.
     """
@@ -102,6 +103,7 @@ def create_full_mvp_graph() -> StateGraph:
     workflow.add_node("route_strategy", route_strategy_node)
     workflow.add_node("momentum", momentum_strategy_node)
     workflow.add_node("mean_reversion", mean_reversion_strategy_node)
+    workflow.add_node("rl_agent", rl_agent_node) # NEW
     workflow.add_node("neutral", neutral_strategy_node)
     workflow.add_node("hedge_agent", hedge_agent_node)
     workflow.add_node("risk_check", risk_management_node)
@@ -121,6 +123,7 @@ def create_full_mvp_graph() -> StateGraph:
         {
             "momentum": "momentum",
             "mean_reversion": "mean_reversion",
+            "rl_agent": "rl_agent", # NEW
             "neutral": "neutral"
         }
     )
@@ -128,6 +131,7 @@ def create_full_mvp_graph() -> StateGraph:
     # All strategies flow to hedge agent
     workflow.add_edge("momentum", "hedge_agent")
     workflow.add_edge("mean_reversion", "hedge_agent")
+    workflow.add_edge("rl_agent", "hedge_agent") # NEW
     workflow.add_edge("neutral", "hedge_agent")
 
     # Hedge agent to risk management
@@ -138,4 +142,3 @@ def create_full_mvp_graph() -> StateGraph:
     workflow.add_edge("execute_orders", END)
 
     return workflow.compile()
-

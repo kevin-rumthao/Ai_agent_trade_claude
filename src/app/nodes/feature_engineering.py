@@ -26,21 +26,22 @@ class FeatureEngine:
 
     def __init__(self) -> None:
         self.ema_9_buffer: deque[float] = deque(maxlen=settings.ema_short_period * 2)
+        self.ema_20_buffer: deque[float] = deque(maxlen=40)  # For Trend Strength
         self.ema_50_buffer: deque[float] = deque(maxlen=settings.ema_long_period * 2)
-        self.ema_200_buffer: deque[float] = deque(maxlen=200 * 2) # Hardcoded 200 for now or add to settings
+        self.ema_200_buffer: deque[float] = deque(maxlen=200 * 2)
         
         # Ensure price buffer is large enough for Bollinger Bands and Volatility
         max_price_lookback = max(settings.volatility_lookback, settings.bollinger_period)
         self.price_buffer: deque[float] = deque(maxlen=max_price_lookback)
         
-        # Ensure close buffer is large enough for RSI and ADX
-        # ADX needs 2x period for smoothing
-        max_close_lookback = max(settings.atr_period, settings.rsi_period + 1, 50) 
+        # Ensure close buffer is large enough for RSI, ADX, and Regime Stats (Vol-100)
+        max_close_lookback = max(settings.atr_period, settings.rsi_period + 1, 150) 
         self.high_buffer: deque[float] = deque(maxlen=max_close_lookback)
         self.low_buffer: deque[float] = deque(maxlen=max_close_lookback)
         self.close_buffer: deque[float] = deque(maxlen=max_close_lookback)
 
         self.ema_9: float | None = None
+        self.ema_20: float | None = None # New
         self.ema_50: float | None = None
         self.ema_200: float | None = None
         
@@ -66,11 +67,15 @@ class FeatureEngine:
     def update_ema(self, price: float) -> None:
         """Update EMAs incrementally."""
         self.ema_9_buffer.append(price)
+        self.ema_20_buffer.append(price) # New
         self.ema_50_buffer.append(price)
         self.ema_200_buffer.append(price)
 
         if len(self.ema_9_buffer) >= settings.ema_short_period:
             self.ema_9 = self.compute_ema(list(self.ema_9_buffer), settings.ema_short_period)
+            
+        if len(self.ema_20_buffer) >= 20:
+            self.ema_20 = self.compute_ema(list(self.ema_20_buffer), 20)
 
         if len(self.ema_50_buffer) >= settings.ema_long_period:
             self.ema_50 = self.compute_ema(list(self.ema_50_buffer), settings.ema_long_period)
@@ -318,6 +323,49 @@ class FeatureEngine:
             
         # OFI = Net Buying Pressure
         return bid_impact - ask_impact
+
+    def compute_regime_features(self) -> dict:
+        """
+        Compute features for RL Agent / Regime Recognition.
+        
+        Returns:
+            dict with keys: vol_regime, trend_strength, momentum_5, momentum_20
+        """
+        closes = list(self.close_buffer)
+        if len(closes) < 100:
+             return {}
+             
+        # 1. Volatility Regime (Vol20 / Vol100)
+        # Calculate returns
+        returns = np.diff(closes) / closes[:-1]
+        
+        if len(returns) >= 100:
+            vol_20 = np.std(returns[-20:])
+            vol_100 = np.std(returns[-100:])
+            vol_regime = vol_20 / (vol_100 + 1e-8)
+        else:
+            vol_regime = 1.0
+            
+        # 2. Trend Strength (EMA20 - EMA50) / EMA50
+        trend_strength = 0.0
+        if self.ema_20 is not None and self.ema_50 is not None and self.ema_50 > 0:
+            trend_strength = (self.ema_20 - self.ema_50) / self.ema_50
+            
+        # 3. Momentum (Pct Change)
+        mom_5 = 0.0
+        mom_20 = 0.0
+        
+        if len(closes) > 5:
+            mom_5 = (closes[-1] - closes[-6]) / closes[-6]
+        if len(closes) > 20:
+            mom_20 = (closes[-1] - closes[-21]) / closes[-21]
+            
+        return {
+            "vol_regime": vol_regime,
+            "trend_strength": trend_strength,
+            "momentum_5": mom_5,
+            "momentum_20": mom_20
+        }
 
     def to_dict(self) -> dict:
         """Serialize state to dict."""
