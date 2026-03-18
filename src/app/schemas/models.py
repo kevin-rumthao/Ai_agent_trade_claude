@@ -13,6 +13,7 @@ class MarketFeatures(BaseModel):
     # Price features
     price: float
     ema_9: Optional[float] = None
+    ema_20: Optional[float] = None # Added for Swing
     ema_50: Optional[float] = None
     ema_200: Optional[float] = None
 

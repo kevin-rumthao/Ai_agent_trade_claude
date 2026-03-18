@@ -2,28 +2,32 @@
 from typing import TypedDict, Literal
 from datetime import datetime
 
-from app.schemas.models import MarketRegime
+from app.schemas.models import MarketRegime, MarketFeatures
 
 
 class RouterState(TypedDict):
     """State for strategy routing."""
     regime: MarketRegime | None
-    selected_strategy: Literal["momentum", "mean_reversion", "neutral"] | None
+    features: MarketFeatures | None
+    selected_strategy: Literal["momentum", "mean_reversion", "swing", "neutral"] | None
     timestamp: datetime
 
 
 async def route_strategy_node(state: RouterState) -> RouterState:
     """
-    Route to appropriate strategy based on market regime.
+    Route to appropriate strategy based on market regime and features.
 
     Routing logic:
-    - TRENDING -> momentum strategy
-    - RANGING -> mean_reversion strategy (not implemented in MVP)
-    - HIGH_VOLATILITY -> neutral (reduce exposure)
-    - LOW_VOLATILITY -> momentum strategy
-    - UNKNOWN -> neutral
+    - TRENDING:
+      - Pullback (RSI < 45 in Uptrend) -> Swing Strategy
+      - Strong Trend -> Momentum Strategy
+    - RANGING -> Mean Reversion Strategy
+    - HIGH_VOLATILITY -> Neutral (reduce exposure)
+    - LOW_VOLATILITY -> Momentum Strategy (breakout anticipation)
+    - UNKNOWN -> Neutral
     """
     regime = state.get("regime")
+    features = state.get("features")
 
     if not regime:
         return {
@@ -31,16 +35,34 @@ async def route_strategy_node(state: RouterState) -> RouterState:
             "selected_strategy": "neutral"
         }
 
-    selected_strategy: Literal["momentum", "mean_reversion", "neutral"]
+    selected_strategy: Literal["momentum", "mean_reversion", "swing", "neutral"]
 
     if regime.regime == "TRENDING":
+        # Default to Momentum
         selected_strategy = "momentum"
+        
+        # Check for Swing (Pullback) opportunities if features available
+        if features and features.rsi is not None and features.ema_50 and features.ema_200:
+            rsi = features.rsi
+            is_uptrend = features.ema_50 > features.ema_200
+            
+            # Swing Logic: Route to Swing if we are in a pullback within a trend
+            if is_uptrend:
+                if rsi < 55:  # Pullback zone
+                    selected_strategy = "swing"
+            else:  # Downtrend
+                if rsi > 45:  # Rally zone
+                    selected_strategy = "swing"
+                    
     elif regime.regime == "RANGING":
         selected_strategy = "mean_reversion"
+        
     elif regime.regime == "HIGH_VOLATILITY":
-        selected_strategy = "neutral"  # Avoid trading in high vol
+        selected_strategy = "neutral"  # Avoid trading in high vol or reduce size
+        
     elif regime.regime == "LOW_VOLATILITY":
-        selected_strategy = "momentum"
+        selected_strategy = "momentum" # Anticipate breakout
+        
     else:  # UNKNOWN
         selected_strategy = "neutral"
 
@@ -61,8 +83,9 @@ def get_strategy_node_name(state: RouterState) -> str:
 
     if selected == "momentum":
         return "momentum"
+    elif selected == "swing":
+        return "swing"
     elif selected == "mean_reversion":
         return "mean_reversion"
     else:
         return "neutral"
-

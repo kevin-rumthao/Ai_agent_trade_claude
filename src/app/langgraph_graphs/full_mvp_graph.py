@@ -20,6 +20,7 @@ from app.nodes.regime_classifier import classify_regime_node
 from app.nodes.strategy_router import route_strategy_node, get_strategy_node_name
 from app.nodes.momentum_policy import momentum_strategy_node
 from app.nodes.mean_reversion_policy import mean_reversion_strategy_node
+from app.nodes.swing_policy import swing_strategy_node
 from app.nodes.rl_agent_node import rl_agent_node # NEW
 from app.nodes.risk_manager import risk_management_node
 from app.nodes.execution_agent import execution_agent_node
@@ -43,7 +44,7 @@ class FullMVPState(TypedDict):
     regime: MarketRegime | None
 
     # Strategy routing
-    selected_strategy: Literal["momentum", "mean_reversion", "rl_agent", "neutral"] | None
+    selected_strategy: Literal["momentum", "mean_reversion", "swing", "rl_agent", "neutral"] | None
 
     # Signal
     signals: list[Signal]
@@ -102,6 +103,7 @@ def create_full_mvp_graph() -> StateGraph:
     workflow.add_node("classify_regime", classify_regime_node)
     workflow.add_node("route_strategy", route_strategy_node)
     workflow.add_node("momentum", momentum_strategy_node)
+    workflow.add_node("swing", swing_strategy_node) # NEW
     workflow.add_node("mean_reversion", mean_reversion_strategy_node)
     workflow.add_node("rl_agent", rl_agent_node) # NEW
     workflow.add_node("neutral", neutral_strategy_node)
@@ -122,6 +124,7 @@ def create_full_mvp_graph() -> StateGraph:
         get_strategy_node_name,
         {
             "momentum": "momentum",
+            "swing": "swing",
             "mean_reversion": "mean_reversion",
             "rl_agent": "rl_agent", # NEW
             "neutral": "neutral"
@@ -130,6 +133,7 @@ def create_full_mvp_graph() -> StateGraph:
 
     # All strategies flow to hedge agent
     workflow.add_edge("momentum", "hedge_agent")
+    workflow.add_edge("swing", "hedge_agent")
     workflow.add_edge("mean_reversion", "hedge_agent")
     workflow.add_edge("rl_agent", "hedge_agent") # NEW
     workflow.add_edge("neutral", "hedge_agent")

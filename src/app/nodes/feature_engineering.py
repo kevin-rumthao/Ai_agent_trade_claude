@@ -371,6 +371,7 @@ class FeatureEngine:
         """Serialize state to dict."""
         return {
             "ema_9_buffer": list(self.ema_9_buffer),
+            "ema_20_buffer": list(self.ema_20_buffer), # Added
             "ema_50_buffer": list(self.ema_50_buffer),
             "ema_200_buffer": list(self.ema_200_buffer),
             "price_buffer": list(self.price_buffer),
@@ -378,6 +379,7 @@ class FeatureEngine:
             "low_buffer": list(self.low_buffer),
             "close_buffer": list(self.close_buffer),
             "ema_9": self.ema_9,
+            "ema_20": self.ema_20, # Added
             "ema_50": self.ema_50,
             "ema_200": self.ema_200,
             "ofi_buffer": list(self.ofi_buffer),
@@ -392,6 +394,8 @@ class FeatureEngine:
         try:
             if "ema_9_buffer" in data:
                 self.ema_9_buffer.extend(data["ema_9_buffer"])
+            if "ema_20_buffer" in data: # Added
+                self.ema_20_buffer.extend(data["ema_20_buffer"])
             if "ema_50_buffer" in data:
                 self.ema_50_buffer.extend(data["ema_50_buffer"])
             if "ema_200_buffer" in data:
@@ -406,6 +410,7 @@ class FeatureEngine:
                 self.close_buffer.extend(data["close_buffer"])
             
             self.ema_9 = data.get("ema_9")
+            self.ema_20 = data.get("ema_20") # Added
             self.ema_50 = data.get("ema_50")
             self.ema_200 = data.get("ema_200")
             
@@ -478,6 +483,7 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
     closes = [k.close for k in klines]
 
     ema9_val = None
+    ema20_val = None
     ema50_val = None
     ema200_val = None
 
@@ -485,6 +491,12 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
         ema9_val = feature_engine.compute_ema(
             closes[-settings.ema_short_period :], settings.ema_short_period
         )
+    
+    if len(closes) >= 20:
+        ema20_val = feature_engine.compute_ema(
+            closes[-20 :], 20
+        )
+
     if len(closes) >= settings.ema_long_period:
         ema50_val = feature_engine.compute_ema(
             closes[-settings.ema_long_period :], settings.ema_long_period
@@ -497,6 +509,8 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
     # Assign computed EMAs if available
     if ema9_val is not None:
         feature_engine.ema_9 = ema9_val
+    if ema20_val is not None:
+        feature_engine.ema_20 = ema20_val
     if ema50_val is not None:
         feature_engine.ema_50 = ema50_val
     if ema200_val is not None:
@@ -612,11 +626,15 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
     if bb_res:
         bb_upper, bb_mid, bb_lower = bb_res
 
+    # Compute Regime Features (Phase 7)
+    regime_feats = feature_engine.compute_regime_features()
+
     features = MarketFeatures(
         timestamp=datetime.now(),
         symbol=symbol,
         price=current_price,
         ema_9=feature_engine.ema_9,
+        ema_20=feature_engine.ema_20, # Added for Swing
         ema_50=feature_engine.ema_50,
         ema_200=feature_engine.ema_200, 
         atr=atr,
@@ -632,7 +650,12 @@ async def compute_features_node(state: FeatureState) -> FeatureState:
         hurst=hurst,
         is_stationary=is_stat,
         volatility_forecast=vol_forecast,
-        ofi=ofi
+        ofi=ofi,
+        # Regime Features
+        vol_regime=regime_feats.get("vol_regime"),
+        trend_strength=regime_feats.get("trend_strength"),
+        momentum_5=regime_feats.get("momentum_5"),
+        momentum_20=regime_feats.get("momentum_20")
     )
     
     # Update previous orderbook
