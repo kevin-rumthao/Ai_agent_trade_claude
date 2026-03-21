@@ -52,10 +52,10 @@ if __name__ == "__main__":
     # We'll try to resolve the path dynamically or assume project root execution.
     
     # Defaulting to the path provided by the user relative to project root
-    file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'BTCUSDT_5Y_MASTER.csv')
+    file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'BTCUSDT_5Y_1m.csv')
     
     # Fallback if running from root
     if not os.path.exists(file_path):
-        file_path = 'data/BTCUSDT_5Y_MASTER.csv'
+        file_path = 'data/BTCUSDT_5Y_1m.csv'
         
     load_and_plot(file_path)

@@ -24,7 +24,7 @@ from src.app.models.ts_jepa import TS_JEPA
 from src.app.utils.data_split import split_data_temporal
 
 # ─── Config ────────────────────────────────────────────────────────────────────
-DATA_PATH = "data/BTCUSDT_16m_1m.csv"
+DATA_PATH = "data/BTCUSDT_5Y_1m.csv"
 JEPA_MODEL_PATH = "src/app/models/jepa_latest.pth"
 SCALER_PATH = "src/app/models/rl_scaler.pkl"
 CHECKPOINTS_DIR = "src/app/models/checkpoints/"

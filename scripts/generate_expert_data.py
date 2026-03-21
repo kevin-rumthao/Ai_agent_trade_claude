@@ -59,7 +59,7 @@ def generate_expert_demonstrations(output_path="data/momentum_expert.pkl"):
     print("=" * 60)
     
     # Load and split data
-    DATA_PATH = "data/BTCUSDT_5Y_MASTER.csv"
+    DATA_PATH = "data/BTCUSDT_5Y_1m.csv"
     MODEL_PATH = "src/app/models/jepa_latest.pth"
     
     print(f"\n1. Loading data from {DATA_PATH}...")

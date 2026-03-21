@@ -32,7 +32,7 @@ def compute_adx(high, low, close, period=14):
 
 def run_vectorized_backtest():
     print("Loading data...")
-    df = pd.read_csv('data/BTCUSDT_5Y_MASTER.csv')
+    df = pd.read_csv('data/BTCUSDT_5Y_1m.csv')
     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
     df.set_index('timestamp', inplace=True)
     df.sort_index(inplace=True)

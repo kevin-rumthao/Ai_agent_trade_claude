@@ -330,17 +330,16 @@ def main():
 
     all_results = []
 
-    # Test on existing data
-    r1 = run_backtest_file(f"{DATA_DIR}/BTCUSDT_16m_1m.csv", "Current Data (Dec 2024 - Mar 2026)")
-    all_results.extend(r1)
-
-    # Test on historical data if available
-    hist_file = f"{DATA_DIR}/BTCUSDT_2023_2024_1m.csv"
-    if os.path.exists(hist_file):
-        r2 = run_backtest_file(hist_file, "Historical Data (Jan 2023 - Dec 2024)")
-        all_results.extend(r2)
+    # Test on the full 5-year dataset
+    five_yr_file = f"{DATA_DIR}/BTCUSDT_5Y_1m.csv"
+    if os.path.exists(five_yr_file):
+        r1 = run_backtest_file(five_yr_file, "5-Year Data (Mar 2021 - Mar 2026)")
+        all_results.extend(r1)
     else:
-        print(f"\n⏳ Historical data not ready yet ({hist_file})")
+        # Fallback to the most recent dataset
+        print(f"\n⏳ 5-year dataset not found, falling back to 16m file.")
+        r1 = run_backtest_file(f"{DATA_DIR}/BTCUSDT_16m_1m.csv", "Current Data (Dec 2024 - Mar 2026)")
+        all_results.extend(r1)
 
     # Summary
     if all_results:

@@ -1,7 +1,7 @@
 
 import os
 
-filename = 'data/BTCUSDT_5Y_MASTER.csv'
+filename = 'data/BTCUSDT_5Y_1m.csv'
 with open(filename, 'rb') as f:
     try:  # Handle empty file case
         f.seek(-2, os.SEEK_END)

@@ -19,7 +19,7 @@ from src.app.utils.data_split import split_data_temporal
 warnings.filterwarnings("ignore")
 
 # --- Configuration ---
-DATA_PATH = "data/BTCUSDT_5Y_MASTER.csv"
+DATA_PATH = "data/BTCUSDT_5Y_1m.csv"
 MODEL_SAVE_PATH = "src/app/models/jepa_latest.pth"
 BATCH_SIZE = 64
 EPOCHS = 10  # Full Training

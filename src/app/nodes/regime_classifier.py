@@ -1,30 +1,105 @@
-"""Regime classification node with downtrend detection."""
+"""Regime classification node powered by LightGBM."""
+import os
+import joblib
+import numpy as np
 from typing import TypedDict
 from datetime import datetime
 
 from app.schemas.models import MarketFeatures, MarketRegime
-from app.tools.llm_tool import llm_tool
 
 
+# ─── Model Cache ──────────────────────────────────────────────────────────────
+_lgbm_model = None
+MODEL_PATH   = "src/app/models/regime_lgbm.pkl"
+
+# Feature order MUST match train_regime_lgbm.py FEATURE_COLS exactly
+FEATURE_COLS = [
+    "feat_adx", "feat_rsi", "feat_ema_dev", "feat_vol",
+    "feat_vol_regime", "feat_trend_strength",
+    "feat_momentum_5", "feat_momentum_20",
+    "feat_sentiment_fg", "feat_sentiment_funding",
+    "feat_sentiment_funding_bias", "feat_sentiment_fg_regime",
+]
+
+
+def load_lgbm():
+    """Load LightGBM model (cached after first call)."""
+    global _lgbm_model
+    if _lgbm_model is not None:
+        return _lgbm_model
+    if not os.path.exists(MODEL_PATH):
+        print(f"⚠️  Regime model not found at {MODEL_PATH}. "
+              f"Run: python src/app/training/train_regime_lgbm.py")
+        return None
+    _lgbm_model = joblib.load(MODEL_PATH)
+    print(f"✅ LightGBM regime model loaded from {MODEL_PATH}")
+    return _lgbm_model
+
+
+def _build_feature_vector(f: MarketFeatures) -> list[float]:
+    """
+    Build the 12-dim feature vector from a MarketFeatures object.
+    Mirrors the feature columns in train_regime_lgbm.py.
+    Safe defaults used when a feature is None.
+    """
+    # EMA-based derived values
+    ema_50  = f.ema_50  or 0.0
+    ema_20  = getattr(f, "ema_20",  None) or 0.0
+    price   = f.price   or 0.0
+    vol_14  = f.realized_volatility or 0.0
+
+    ema_dev        = (price - ema_50) / ema_50 if ema_50 else 0.0
+    trend_strength = (ema_20 - ema_50) / ema_50 if ema_50 else 0.0
+
+    # Vol regime: short-term / long-term vol  (approximated from feat_vol_regime if present)
+    vol_regime = getattr(f, "vol_regime", None) or 1.0
+
+    # Momentum
+    momentum_5  = getattr(f, "momentum_5",  None) or 0.0
+    momentum_20 = getattr(f, "momentum_20", None) or 0.0
+
+    # Sentiment (neutral defaults)
+    sentiment_fg      = f.sentiment_fear_greed   if hasattr(f, "sentiment_fear_greed")   and f.sentiment_fear_greed   is not None else 0.5
+    sentiment_funding = f.sentiment_funding_rate  if hasattr(f, "sentiment_funding_rate") and f.sentiment_funding_rate is not None else 0.0
+    sentiment_bias    = f.sentiment_funding_bias  if hasattr(f, "sentiment_funding_bias") and f.sentiment_funding_bias is not None else 0.0
+    sentiment_fg_reg  = f.sentiment_fg_regime     if hasattr(f, "sentiment_fg_regime")    and f.sentiment_fg_regime    is not None else 0.5
+
+    return [
+        (f.adx / 100.0) if f.adx else 0.0,     # feat_adx (normalised)
+        (f.rsi / 100.0) if f.rsi else 0.5,     # feat_rsi (normalised)
+        ema_dev,                                # feat_ema_dev
+        vol_14,                                 # feat_vol
+        vol_regime,                             # feat_vol_regime
+        trend_strength,                         # feat_trend_strength
+        momentum_5,                             # feat_momentum_5
+        momentum_20,                            # feat_momentum_20
+        sentiment_fg,                           # feat_sentiment_fg
+        sentiment_funding,                      # feat_sentiment_funding
+        sentiment_bias,                         # feat_sentiment_funding_bias
+        sentiment_fg_reg,                       # feat_sentiment_fg_regime
+    ]
+
+
+# ─── State ────────────────────────────────────────────────────────────────────
 class RegimeState(TypedDict):
-    """State for regime classification."""
     features: MarketFeatures | None
     regime: MarketRegime | None
     symbol: str
     timestamp: datetime
 
 
+# ─── Node ─────────────────────────────────────────────────────────────────────
 async def classify_regime_node(state: RegimeState) -> RegimeState:
     """
-    Classify market regime with downtrend detection.
+    Classify market regime using the LightGBM model.
 
     Regimes:
-    - TRENDING_UP: Price > EMA200, EMA9 > EMA50, ADX > 20
-    - TRENDING_DOWN: Price < EMA200, EMA50 < EMA200, ADX > 20
-    - RANGING: EMAs compressed, ADX < 20
-    - HIGH_VOLATILITY: Realized vol > 0.03
-    - LOW_VOLATILITY: Realized vol < 0.01
-    - UNKNOWN: Insufficient data
+      TRENDING        — Strong directional move
+      RANGING         — Sideways / mean-reverting
+      HIGH_VOLATILITY — Extreme vol, reduce exposure
+      LOW_VOLATILITY  — Coiling, breakout expected
+
+    Falls back to RANGING (confidence 0.3) if model unavailable.
     """
     features = state.get("features")
 
@@ -38,183 +113,89 @@ async def classify_regime_node(state: RegimeState) -> RegimeState:
             )
         }
 
-    # Rule-based classification
-    regime_str = "UNKNOWN"
-    confidence = 0.0
-    ambiguity = 1.0
-    volatility_percentile: float | None = None
-    trend_strength: float | None = None
+    model = load_lgbm()
 
-    price = features.price
-    ema_9 = features.ema_9
-    ema_50 = features.ema_50
-    ema_200 = features.ema_200
-    adx = features.adx
-    rsi = features.rsi
-    vol = features.realized_volatility or features.atr or 0.0
+    if model is None:
+        # Graceful degradation: no model trained yet
+        regime = MarketRegime(
+            regime="RANGING",
+            confidence=0.3,
+            timestamp=datetime.now()
+        )
+        print("⚠️  No regime model — defaulting to RANGING (0.3 confidence)")
+        return {**state, "regime": regime}
 
-    has_trend = ema_9 is not None and ema_50 is not None
+    # Build feature vector & run inference
+    feature_vec = _build_feature_vector(features)
+    feature_arr = np.array(feature_vec, dtype=np.float32).reshape(1, -1)
 
-    # ─── Step 1: Volatility Check ─────────────────────────────────────────
-    if vol > 0.03:
-        regime_str = "HIGH_VOLATILITY"
-        confidence = 0.7
-        ambiguity = 0.3
-        volatility_percentile = 0.8
-    elif vol < 0.005:
-        regime_str = "LOW_VOLATILITY"
-        confidence = 0.7
-        ambiguity = 0.3
-        volatility_percentile = 0.2
+    proba      = model.predict_proba(feature_arr)[0]
+    regime_idx = int(proba.argmax())
+    regime_str = model.classes_[regime_idx]
+    confidence = float(proba[regime_idx])
 
-    # ─── Step 2: Trend Detection ──────────────────────────────────────────
-    if has_trend and regime_str in ("UNKNOWN", "LOW_VOLATILITY"):
-        ema_9_val = ema_9 or 0.0
-        ema_50_val = ema_50 or 0.0
-        ema_200_val = ema_200 or 0.0
+    # Derive trend_strength for sentiment overlay compatibility
+    ema_50  = features.ema_50 or 0.0
+    ema_20  = getattr(features, "ema_20", None) or 0.0
+    trend_strength = (ema_20 - ema_50) / ema_50 if ema_50 else None
 
-        # Calculate EMA separations
-        ema_diff_pct = abs(ema_9_val - ema_50_val) / ema_50_val if ema_50_val > 0 else 0.0
-        price_vs_ema200 = (price - ema_200_val) / ema_200_val if ema_200_val > 0 else 0.0
-
-        # ADX trend strength
-        strong_adx = adx is not None and adx > 20
-        moderate_adx = adx is not None and adx > 15
-
-        # Long-term trend filter using EMA 200
-        is_above_ema200 = ema_200_val > 0 and price > ema_200_val
-        is_below_ema200 = ema_200_val > 0 and price < ema_200_val
-        ema50_below_ema200 = ema_200_val > 0 and ema_50_val < ema_200_val
-        ema50_above_ema200 = ema_200_val > 0 and ema_50_val > ema_200_val
-
-        # ─── DOWNTREND Detection (NEW) ────────────────────────────────
-        # Key signals:
-        # 1. Price below EMA 200 (bear market structure)
-        # 2. EMA 50 below EMA 200 (medium-term trend confirmed bearish)
-        # 3. EMA 9 < EMA 50 (short-term momentum bearish)
-        # 4. ADX showing trend strength (not just chop)
-        if is_below_ema200 and ema50_below_ema200 and ema_9_val < ema_50_val:
-            if strong_adx:
-                regime_str = "TRENDING"
-                trend_strength = -ema_diff_pct  # Negative for downtrend
-                confidence = 0.80
-                ambiguity = 0.20
-            elif moderate_adx:
-                regime_str = "TRENDING"
-                trend_strength = -ema_diff_pct
-                confidence = 0.65
-                ambiguity = 0.35
-
-        # ─── UPTREND Detection ────────────────────────────────────────
-        elif is_above_ema200 and ema50_above_ema200 and ema_9_val > ema_50_val:
-            if strong_adx:
-                regime_str = "TRENDING"
-                trend_strength = ema_diff_pct  # Positive for uptrend
-                confidence = 0.80
-                ambiguity = 0.20
-            elif moderate_adx:
-                regime_str = "TRENDING"
-                trend_strength = ema_diff_pct
-                confidence = 0.65
-                ambiguity = 0.35
-
-        # ─── Moderate Trend (less strict threshold) ───────────────────
-        # Wider threshold: 0.5% EMA separation instead of 2%
-        elif ema_diff_pct > 0.005:
-            if ema_9_val > ema_50_val:
-                regime_str = "TRENDING"
-                trend_strength = ema_diff_pct
-                confidence = 0.60
-                ambiguity = 0.40
-            else:
-                regime_str = "TRENDING"
-                trend_strength = -ema_diff_pct
-                confidence = 0.60
-                ambiguity = 0.40
-
-        # ─── RANGING ──────────────────────────────────────────────────
-        elif ema_diff_pct < 0.005:
-            regime_str = "RANGING"
-            confidence = 0.65
-            ambiguity = 0.35
-            trend_strength = 0.0
-
-    # ─── Step 3: Sentiment Overlay ─────────────────────────────────────────
     regime = MarketRegime(
-        regime=regime_str,  # type: ignore
+        regime=regime_str,          # type: ignore
         confidence=confidence,
-        volatility_percentile=volatility_percentile,
         trend_strength=trend_strength,
         timestamp=datetime.now()
     )
+
+    # Apply sentiment overlay (fine-tunes confidence — existing logic kept)
     regime = _apply_sentiment_overlay(regime, features)
 
-    # ─── Step 4: LLM Fallback ──────────────────────────────────────────────
-    if regime.confidence < 0.55:
-        try:
-            llm_regime = await llm_tool.classify_regime_with_llm(features, ambiguity)
-            if llm_regime.confidence > regime.confidence:
-                regime = _apply_sentiment_overlay(llm_regime, features)
-                print(f"  🤖 LLM override: {llm_regime.regime} (conf: {llm_regime.confidence:.2f})")
-        except Exception as e:
-            print(f"  ⚠️ LLM fallback failed: {e}")
+    print(f"📊 Regime: {regime.regime} (confidence: {regime.confidence:.2f}) "
+          f"[proba: {dict(zip(model.classes_, proba.round(2)))}]")
 
-    return {
-        **state,
-        "regime": regime
-    }
+    return {**state, "regime": regime}
 
 
+# ─── Sentiment Overlay (unchanged from original) ──────────────────────────────
 def _apply_sentiment_overlay(regime: MarketRegime, features: MarketFeatures) -> MarketRegime:
     """
-    Modify regime/confidence based on sentiment data.
+    Fine-tune regime confidence based on sentiment signals.
 
-    Logic:
-    - Extreme Fear + TRENDING (with negative trend strength) → Boost DOWN confidence
-    - Extreme Fear + RANGING → Boost confidence for mean reversion BUY
-    - Extreme Greed + TRENDING → Caution (crowded trade)
-    - Negative funding + uptrend → Boost (short squeeze potential)
-    - Positive funding + downtrend → Boost (long squeeze potential)
+    Rules:
+    - Extreme Fear + DOWNTREND   → +15% confidence (bearish conviction)
+    - Extreme Fear + RANGING     → +10% confidence (contrarian buy zone)
+    - Extreme Greed + UPTREND    → -15% confidence (crowded long, caution)
+    - Short-heavy funding + UP   → +10% confidence (short squeeze fuel)
+    - Long-heavy funding + DOWN  → +10% confidence (long squeeze risk)
     """
-    fg = features.sentiment_fear_greed  # 0-1
-    funding = features.sentiment_funding_bias  # -1 to 1
+    fg      = features.sentiment_fear_greed  if hasattr(features, "sentiment_fear_greed")  else None
+    funding = features.sentiment_funding_bias if hasattr(features, "sentiment_funding_bias") else None
 
     if fg is None:
         return regime
 
     adjustment = 0.0
 
-    # ─── Extreme Fear ──────────────────────────────────────────────────
     if fg < 0.2:
         if regime.regime == "TRENDING" and regime.trend_strength and regime.trend_strength < 0:
-            # Extreme fear + downtrend = strong bearish conviction
             adjustment += 0.15
-            print(f"  📊 Sentiment: Extreme Fear + DOWNTREND → +15% confidence")
+            print("  📊 Sentiment: Extreme Fear + DOWNTREND → +15% confidence")
         elif regime.regime == "RANGING":
-            # Extreme fear + ranging = contrarian buy opportunity
             adjustment += 0.10
-            print(f"  📊 Sentiment: Extreme Fear + RANGING → +10% confidence (contrarian)")
-
-    # ─── Extreme Greed ─────────────────────────────────────────────────
+            print("  📊 Sentiment: Extreme Fear + RANGING → +10% confidence (contrarian)")
     elif fg > 0.8:
         if regime.regime == "TRENDING" and regime.trend_strength and regime.trend_strength > 0:
-            # Extreme greed + uptrend = crowded long, caution
             adjustment -= 0.15
-            print(f"  📊 Sentiment: Extreme Greed + UPTREND → -15% confidence (crowded)")
+            print("  📊 Sentiment: Extreme Greed + UPTREND → -15% confidence (crowded)")
 
-    # ─── Funding Rate ──────────────────────────────────────────────────
     if funding is not None:
         if funding < -0.5 and regime.regime == "TRENDING" and regime.trend_strength and regime.trend_strength > 0:
-            # Short-heavy funding + uptrend = squeeze fuel
             adjustment += 0.10
-            print(f"  📊 Sentiment: Short-heavy funding + UPTREND → +10% confidence")
+            print("  📊 Sentiment: Short-heavy funding + UPTREND → +10% confidence")
         elif funding > 0.5 and regime.regime == "TRENDING" and regime.trend_strength and regime.trend_strength < 0:
-            # Long-heavy funding + downtrend = long squeeze incoming
             adjustment += 0.10
-            print(f"  📊 Sentiment: Long-heavy funding + DOWNTREND → +10% confidence")
+            print("  📊 Sentiment: Long-heavy funding + DOWNTREND → +10% confidence")
 
-    new_confidence = max(0.1, min(1.0, regime.confidence + adjustment))
     if abs(adjustment) > 0.01:
-        regime.confidence = new_confidence
+        regime.confidence = float(np.clip(regime.confidence + adjustment, 0.1, 1.0))
 
     return regime

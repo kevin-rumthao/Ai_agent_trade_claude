@@ -19,7 +19,7 @@ from src.app.utils.data_split import split_data_temporal
 warnings.filterwarnings("ignore")
 
 # --- Configuration (PATCHED FOR QUICK TEST) ---
-DATA_PATH = "data/BTCUSDT_5Y_MASTER.csv"
+DATA_PATH = "data/BTCUSDT_5Y_1m.csv"
 MODEL_SAVE_PATH = "src/app/models/jepa_quick_test.pth"
 BATCH_SIZE = 16
 EPOCHS = 1  # Quick test

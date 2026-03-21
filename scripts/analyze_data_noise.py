@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-file_path = 'data/BTCUSDT_5Y_MASTER.csv'
+file_path = 'data/BTCUSDT_5Y_1m.csv'
 try:
     df = pd.read_csv(file_path)
     print(f"Total Rows: {len(df)}")
