@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     kotak_mobile_number: str = ""
     kotak_password: str = ""  # MPIN or Password
     kotak_totp_secret: str = ""  # For generating TOTP if needed
+    
+    # Redis Configuration
+    redis_url: str = "redis://localhost:6379"
 
 
     # Trading Provider Selection
@@ -102,7 +105,8 @@ class Settings(BaseSettings):
     # Trading permissions/constraints
     allow_shorting: bool = False
     # Main loop
-    loop_interval_seconds: int = 60
+    fast_loop_interval_seconds: int = 5
+    slow_loop_interval_seconds: int = 3600
     # Optional: Limit iterations (0 = unlimited)
     max_iterations: int = 0
     # Optional: Time limit in hours (0 = unlimited)
@@ -125,6 +129,9 @@ class Settings(BaseSettings):
             self.kotak_mobile_number = os.getenv("KOTAK_MOBILE_NUMBER", "")
             self.kotak_password = os.getenv("KOTAK_PASSWORD", "")
             self.kotak_totp_secret = os.getenv("KOTAK_TOTP_SECRET", "")
+
+            # Redis Configuration
+            self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
 
             # Trading Provider Selection
             self.trading_provider = os.getenv("TRADING_PROVIDER", "binance")
@@ -172,7 +179,8 @@ class Settings(BaseSettings):
             self.enable_backtesting = os.getenv("ENABLE_BACKTESTING", "false").lower() in {"1", "true", "yes"}
             self.backtest_data_path = os.getenv("BACKTEST_DATA_PATH")
             self.allow_shorting = os.getenv("ALLOW_SHORTING", "false").lower() in {"1", "true", "yes"}
-            self.loop_interval_seconds = int(os.getenv("LOOP_INTERVAL_SECONDS", "60"))
+            self.fast_loop_interval_seconds = int(os.getenv("FAST_LOOP_INTERVAL_SECONDS", "5"))
+            self.slow_loop_interval_seconds = int(os.getenv("SLOW_LOOP_INTERVAL_SECONDS", "3600"))
             self.max_iterations = int(os.getenv("MAX_ITERATIONS", "0"))
             self.time_limit_hours = float(os.getenv("TIME_LIMIT_HOURS", "0.0"))
 

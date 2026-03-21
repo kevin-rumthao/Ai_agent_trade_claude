@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Trading Command Center{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              background: '#0f172a', /* slate-900 */
+              surface: '#1e293b', /* slate-800 */
+              surfaceHighlight: '#334155', /* slate-700 */
+              primary: '#3b82f6', /* blue-500 */
+              success: '#10b981', /* emerald-500 */
+              danger: '#ef4444', /* red-500 */
+              warning: '#f59e0b', /* amber-500 */
+              textPrimary: '#f8fafc', /* slate-50 */
+              textSecondary: '#94a3b8', /* slate-400 */
+            }
+          }
+        }
+      }
+    </script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+    
+    <!-- Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <style>
+      body {
+        background-color: var(--color-background, #0f172a);
+        color: var(--color-textPrimary, #f8fafc);
+        font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      }
+      
+      /* Terminal / Log Scrollbar Customization */
+      .terminal-scroll::-webkit-scrollbar {
+        width: 8px;
+      }
+      .terminal-scroll::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      .terminal-scroll::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 4px;
+      }
+      .terminal-scroll::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+      }
+      
+      /* Smooth transitions */
+      .transition-all {
+        transition-property: all;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 150ms;
+      }
+    </style>
+</head>
+<body class="bg-background text-textPrimary h-screen flex overflow-hidden">
+    
+    <!-- Sidebar -->
+    <aside class="w-64 bg-surface border-r border-surfaceHighlight flex flex-col">
+        <div class="h-16 flex items-center justify-center border-b border-surfaceHighlight px-4 shrink-0">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-bold text-white shadow-lg shadow-primary/20">
+                    AI
+                </div>
+                <h1 class="font-bold text-lg tracking-wide text-textPrimary">Trade Agent</h1>
+            </div>
+        </div>
+        
+        <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+            <a href="/dashboard" class="flex items-center gap-3 px-3 py-2.5 bg-surfaceHighlight/50 rounded-lg text-primary font-medium transition-all group">
+                <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                Dashboard
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-textSecondary hover:bg-surfaceHighlight hover:text-textPrimary transition-all group">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Settings
+            </a>
+        </nav>
+        
+        <div class="p-4 border-t border-surfaceHighlight">
+            <div class="flex items-center justify-between px-2 py-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-success animate-pulse" id="connection-status-dot"></span>
+                    <span class="text-xs font-medium text-textSecondary" id="connection-status-text">Connected</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col h-full bg-background overflow-hidden relative">
+        <!-- Header -->
+        <header class="h-16 border-b border-surfaceHighlight bg-surface/50 backdrop-blur-sm flex items-center justify-between px-6 shrink-0 relative z-10 w-full">
+            <div class="flex items-center gap-4 border border-surfaceHighlight rounded-lg px-3 py-1.5 bg-background">
+                <span class="text-sm text-textSecondary font-medium">Symbol</span>
+                <span class="font-bold text-lg text-primary">{% block current_symbol %}{{ symbol }}{% endblock %}</span>
+            </div>
+            
+            <div class="flex items-center gap-6">
+                <!-- Status Badge (HTMX polls this) -->
+                <div hx-get="/api/status" hx-trigger="every 2s" hx-swap="outerHTML" id="status-badge" class="flex items-center gap-2 border border-surfaceHighlight rounded-full px-4 py-1.5 bg-surface">
+                    <div class="w-1.5 h-1.5 rounded-full bg-textSecondary"></div>
+                    <span class="text-xs font-medium uppercase tracking-wider text-textSecondary">Loading...</span>
+                </div>
+                
+                <!-- Kill Switch Form -->
+                <button type="button" 
+                        id="kill-switch"
+                        hx-post="/api/stop" 
+                        hx-swap="none"
+                        class="px-5 py-2 z-20 bg-danger/10 text-danger border border-danger/30 hover:bg-danger hover:text-white rounded-lg font-bold shadow-lg shadow-danger/10 transition-all active:scale-95 flex items-center gap-2"
+                        onclick="this.classList.add('opacity-50', 'pointer-events-none'); this.innerHTML = '<span class=\'w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin\'></span> Stopping...';">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
+                    KILL SWITCH
+                </button>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <div class="flex-1 overflow-y-auto p-6 z-0">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Base Scripts -->
+    <script>
+        // Custom HTMX extension to handle status polling updates
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            if(event.detail.target.id === 'status-badge') {
+                const response = JSON.parse(event.detail.xhr.response);
+                let badgeClass, dotClass, text;
+                
+                if(response.is_running) {
+                    badgeClass = 'bg-success/10 border-success/30 text-success';
+                    dotClass = 'bg-success animate-pulse';
+                    text = 'RUNNING';
+                    // Re-enable kill switch if running
+                    const killBtn = document.getElementById('kill-switch');
+                    if(killBtn) {
+                        killBtn.classList.remove('opacity-50', 'pointer-events-none');
+                        killBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg> KILL SWITCH';
+                    }
+                } else {
+                    badgeClass = 'bg-surfaceHighlight border-surfaceHighlight text-textSecondary';
+                    dotClass = 'bg-textSecondary';
+                    text = 'STOPPED';
+                }
+                
+                event.detail.target.outerHTML = `
+                    <div hx-get="/api/status" hx-trigger="every 2s" hx-swap="outerHTML" id="status-badge" class="flex items-center gap-2 border rounded-full px-4 py-1.5 transition-colors ${badgeClass}">
+                        <div class="w-1.5 h-1.5 rounded-full ${dotClass}"></div>
+                        <span class="text-xs font-bold uppercase tracking-wider">${text}</span>
+                    </div>
+                `;
+                htmx.process(document.getElementById('status-badge'));
+            }
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

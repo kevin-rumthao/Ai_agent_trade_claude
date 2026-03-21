@@ -22,6 +22,7 @@ from app.nodes.momentum_policy import momentum_strategy_node
 from app.nodes.mean_reversion_policy import mean_reversion_strategy_node
 from app.nodes.swing_policy import swing_strategy_node
 from app.nodes.rl_agent_node import rl_agent_node # NEW
+from app.nodes.sentiment_enrichment import enrich_sentiment_node
 from app.nodes.risk_manager import risk_management_node
 from app.nodes.execution_agent import execution_agent_node
 from app.nodes.hedge_agent import hedge_agent_node
@@ -39,6 +40,10 @@ class FullMVPState(TypedDict):
 
     # World Model
     market_latent_state: list[float] | None
+
+    # Sentiment
+    sentiment_fear_greed: float | None
+    sentiment_funding_rate: float | None
 
     # Regime
     regime: MarketRegime | None
@@ -99,6 +104,7 @@ def create_full_mvp_graph() -> StateGraph:
     # Add all nodes (avoid state key names)
     workflow.add_node("ingest", ingest_market_data_node)
     workflow.add_node("compute_features", compute_features_node)
+    workflow.add_node("enrich_sentiment", enrich_sentiment_node)
     workflow.add_node("world_model", world_model_node)
     workflow.add_node("classify_regime", classify_regime_node)
     workflow.add_node("route_strategy", route_strategy_node)
@@ -114,7 +120,8 @@ def create_full_mvp_graph() -> StateGraph:
     # Define linear edges
     workflow.set_entry_point("ingest")
     workflow.add_edge("ingest", "compute_features")
-    workflow.add_edge("compute_features", "world_model")
+    workflow.add_edge("compute_features", "enrich_sentiment")
+    workflow.add_edge("enrich_sentiment", "world_model")
     workflow.add_edge("world_model", "classify_regime")
     workflow.add_edge("classify_regime", "route_strategy")
 

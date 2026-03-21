@@ -85,8 +85,8 @@ async def momentum_strategy_node(state: MomentumState) -> MomentumState:
     MAINTAIN_RSI_SHORT_MAX = 55.0
 
     # 1. Regime Check
-    # Use relaxed threshold if we are already in a trade
-    adx_threshold = MAINTAIN_ADX_THRESHOLD if current_direction != "NEUTRAL" else 20.0 # Relaxed Entry to 20
+    # Use correct ADX threshold based on state
+    adx_threshold = ENTRY_ADX_THRESHOLD if current_direction == "NEUTRAL" else MAINTAIN_ADX_THRESHOLD
     
     if adx and adx < adx_threshold:
         return {
@@ -125,14 +125,11 @@ async def momentum_strategy_node(state: MomentumState) -> MomentumState:
         # We stay LONG if:
         # 1. Price is still somewhat bullish (e.g. > EMA 50 or just > EMA 200) - Let's use EMA 9 > EMA 50 as primary trend
         #    Actually, if EMA9 crosses below EMA50, that's a clear exit signal.
-        # 2. RSI is within relaxed bounds
+        # 2. RSI is within relaxed bounds (REMOVED: RSI caused premature exits in strong trends)
         
         crossover_still_valid = (ema_9 > ema_50)
         
-        # Relaxed RSI check
-        rsi_valid = (rsi is not None and MAINTAIN_RSI_LONG_MIN < rsi < MAINTAIN_RSI_LONG_MAX) if rsi else True
-        
-        if crossover_still_valid and rsi_valid:
+        if crossover_still_valid:
             # MAINTAIN LONG
             direction = "LONG"
             strength = previous_signal.strength if previous_signal else 1.0
@@ -141,7 +138,7 @@ async def momentum_strategy_node(state: MomentumState) -> MomentumState:
         else:
             # EXIT
             direction = "NEUTRAL"
-            reasoning = "EXIT LONG: Crossover invalid or RSI out of bounds"
+            reasoning = "EXIT LONG: Crossover invalid"
 
     # State: SHORT
     elif current_direction == "SHORT":
@@ -166,10 +163,9 @@ async def momentum_strategy_node(state: MomentumState) -> MomentumState:
     else:
         # Check Strict Entry Conditions
         
-        # RSI Entry (Widened)
-        # 45-75 for Long, 25-55 for Short
-        is_rsi_long_entry = (rsi is not None and 45.0 < rsi < 75.0) if rsi else True
-        is_rsi_short_entry = (rsi is not None and 25.0 < rsi < 55.0) if rsi else True
+        # RSI Entry (Relaxed: only lower bound, allow overbought)
+        is_rsi_long_entry = (rsi is not None and rsi > ENTRY_RSI_LONG_MIN) if rsi else True
+        is_rsi_short_entry = (rsi is not None and ENTRY_RSI_SHORT_MIN < rsi < ENTRY_RSI_SHORT_MAX) if rsi else True
 
         # Long Entry
         if ema_9 > ema_50 and price > ema_9:

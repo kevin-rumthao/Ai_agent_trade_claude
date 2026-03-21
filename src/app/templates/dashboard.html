@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-6 h-full">
+    
+    <!-- Left Column: Chart & Stats -->
+    <div class="xl:col-span-2 flex flex-col gap-6 h-full min-h-[600px]">
+        
+        <!-- Live Chart Panel -->
+        <div class="bg-surface rounded-xl border border-surfaceHighlight shadow-lg overflow-hidden flex flex-col flex-1 relative">
+            <div class="px-5 py-4 border-b border-surfaceHighlight flex justify-between items-center bg-surface/80 absolute top-0 w-full z-10 backdrop-blur-sm">
+                <h2 class="font-semibold text-textPrimary flex items-center gap-2">
+                    <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                    Live Market Chart
+                </h2>
+                <!-- Technical Indicators Badges (Filled via WS) -->
+                <div class="flex gap-2 text-xs" id="tech-indicators-badges">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+            <div id="tvchart" class="flex-1 w-full bg-background mt-14 relative z-0"></div>
+        </div>
+        
+        <!-- Features / Stats Panel -->
+        <div class="bg-surface rounded-xl border border-surfaceHighlight shadow-lg p-5 shrink-0">
+            <h2 class="font-semibold text-textPrimary mb-4">Latest Agent Features</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="features-grid">
+                <div class="bg-background rounded-lg p-3 border border-surfaceHighlight">
+                    <div class="text-xs text-textSecondary uppercase tracking-wider mb-1">Current Price</div>
+                    <div class="font-bold text-lg text-textPrimary" id="stat-price">--</div>
+                </div>
+                <div class="bg-background rounded-lg p-3 border border-surfaceHighlight">
+                    <div class="text-xs text-textSecondary uppercase tracking-wider mb-1">Market Regime</div>
+                    <div class="font-bold text-lg text-textPrimary" id="stat-regime">--</div>
+                </div>
+                <div class="bg-background rounded-lg p-3 border border-surfaceHighlight">
+                    <div class="text-xs text-textSecondary uppercase tracking-wider mb-1">Selected Strategy</div>
+                    <div class="font-bold text-lg text-primary" id="stat-strategy">--</div>
+                </div>
+                <div class="bg-background rounded-lg p-3 border border-surfaceHighlight">
+                    <div class="text-xs text-textSecondary uppercase tracking-wider mb-1">Fast Iteration</div>
+                    <div class="font-bold text-lg text-textPrimary" id="stat-iteration">0</div>
+                </div>
+                <div class="bg-background rounded-lg p-3 border border-surfaceHighlight hidden md:block">
+                    <div class="text-xs text-textSecondary uppercase tracking-wider mb-1">Macro Cycles</div>
+                    <div class="font-bold text-lg text-primary" id="stat-slow-iteration">0</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Right Column: Live Logs -->
+    <div class="bg-surface rounded-xl border border-surfaceHighlight shadow-lg flex flex-col h-full min-h-[600px]">
+        <div class="px-5 py-4 border-b border-surfaceHighlight flex justify-between items-center shrink-0">
+            <h2 class="font-semibold text-textPrimary flex items-center gap-2">
+                <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                Agent Logs
+            </h2>
+            <button onclick="document.getElementById('log-container').innerHTML = '';" class="text-xs text-textSecondary hover:text-textPrimary transition-colors">
+                Clear
+            </button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-4 terminal-scroll bg-[#0b1121] rounded-b-xl font-mono text-sm leading-relaxed" id="log-container">
+            <div class="text-textSecondary/50 text-xs text-center mt-10">Waiting for agent connection...</div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chart.js"></script>
+<script>
+    // Set up WebSocket connection
+    const currentHost = window.location.host;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${currentHost}/ws`;
+    
+    let ws = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    
+    function connectWebSocket() {
+        console.log("Connecting to WebSocket:", wsUrl);
+        ws = new WebSocket(wsUrl);
+        
+        ws.onopen = function() {
+            console.log("WebSocket connected");
+            reconnectAttempts = 0;
+            document.getElementById('connection-status-dot').className = 'w-2 h-2 rounded-full bg-success animate-pulse';
+            document.getElementById('connection-status-text').textContent = 'Live';
+            appendLog('System', 'Connected to trading engine WebSocket', 'success');
+        };
+        
+        ws.onmessage = function(event) {
+            const msg = JSON.parse(event.data);
+            handleWebSocketMessage(msg);
+        };
+        
+        ws.onclose = function(e) {
+            console.log("WebSocket connection closed", e.reason);
+            document.getElementById('connection-status-dot').className = 'w-2 h-2 rounded-full bg-danger animate-pulse';
+            document.getElementById('connection-status-text').textContent = 'Disconnected';
+            appendLog('System', 'WebSocket connection lost', 'danger');
+            
+            if (reconnectAttempts < maxReconnectAttempts) {
+                const timeout = Math.pow(2, reconnectAttempts) * 1000;
+                console.log(`Attempting to reconnect in ${timeout}ms...`);
+                setTimeout(connectWebSocket, timeout);
+                reconnectAttempts++;
+            }
+        };
+        
+        ws.onerror = function(err) {
+            console.error("WebSocket error:", err);
+            // close will be fired next
+        };
+    }
+    
+    function handleWebSocketMessage(msg) {
+        if (msg.type === 'state_update') {
+            const state = msg.data;
+            
+            // Update stats
+            if (state.iteration !== undefined) {
+                const iterEl = document.getElementById('stat-iteration');
+                if(iterEl) iterEl.textContent = state.iteration;
+            }
+            if (state.slow_iterations !== undefined) {
+                const slIterEl = document.getElementById('stat-slow-iteration');
+                if(slIterEl) slIterEl.textContent = state.slow_iterations;
+            }
+            if (state.features && state.features.price) {
+                const priceEl = document.getElementById('stat-price');
+                if(priceEl) priceEl.textContent = `$${state.features.price.toFixed(2)}`;
+                
+                // Update chart if it exists
+                if (window.updateLivePrice) {
+                    window.updateLivePrice(state.features.price);
+                }
+            }
+            if (state.regime && state.regime.regime) {
+                const regimeEl = document.getElementById('stat-regime');
+                if(regimeEl) regimeEl.textContent = state.regime.regime;
+            }
+            if (state.selected_strategy) {
+                const stratEl = document.getElementById('stat-strategy');
+                if(stratEl) stratEl.textContent = state.selected_strategy;
+            }
+            
+            // Update Technical Indicators Badges
+            if (state.features) {
+                const badgesHtml = [];
+                if(state.features.ema_9) badgesHtml.push(`<span class="px-2 py-1 bg-surfaceHighlight rounded text-primary">EMA9: ${state.features.ema_9.toFixed(2)}</span>`);
+                if(state.features.ema_50) badgesHtml.push(`<span class="px-2 py-1 bg-surfaceHighlight rounded text-primary">EMA50: ${state.features.ema_50.toFixed(2)}</span>`);
+                if(state.features.atr) badgesHtml.push(`<span class="px-2 py-1 bg-surfaceHighlight rounded text-warning">ATR: ${state.features.atr.toFixed(4)}</span>`);
+                
+                const badgesContainer = document.getElementById('tech-indicators-badges');
+                if(badgesContainer) badgesContainer.innerHTML = badgesHtml.join('');
+            }
+            
+            // Log signals
+            if (state.signals && state.signals.length > 0) {
+                state.signals.forEach(s => {
+                    const color = s.direction.toLowerCase() === 'buy' ? 'success' : 
+                                 s.direction.toLowerCase() === 'sell' ? 'danger' : 'textSecondary';
+                    appendLog(`Agent: ${s.strategy}`, `Signal: ${s.direction} (Confidence: ${s.confidence.toFixed(2)}) - ${s.reasoning}`, color);
+                });
+            }
+            
+            // Log orders
+            if (state.approved_orders && state.approved_orders.length > 0) {
+                state.approved_orders.forEach(o => {
+                    const color = o.side.toLowerCase() === 'buy' ? 'success' : 'danger';
+                    appendLog('Execution', `Placing ${o.side} order for ${o.quantity} ${o.symbol} at ${o.order_type}`, color);
+                });
+            }
+            
+            // Log execution results
+            if (state.execution_results && state.execution_results.length > 0) {
+                state.execution_results.forEach(e => {
+                    if(e.success) {
+                        appendLog('Exchange', `Order filled successfully: ${e.order_id}`, 'success');
+                    } else {
+                        appendLog('Exchange', `Order failed: ${e.error_message}`, 'danger');
+                    }
+                });
+            }
+            
+        } else if (msg.type === 'system_event') {
+            appendLog('System', msg.message, 'primary');
+        } else if (msg.type === 'system_error') {
+            appendLog('Error', msg.message, 'danger');
+        } else if (msg.type === 'iteration_start') {
+            appendLog('System', `--- Starting Iteration ${msg.iteration} ---`, 'textSecondary');
+        } else if (msg.type === 'connection_established') {
+            // clear the waiting message
+            const lc = document.getElementById('log-container');
+            if (lc && lc.innerHTML.includes('Waiting for agent connection')) {
+                lc.innerHTML = '';
+            }
+        }
+    }
+    
+    function appendLog(source, message, tailwindColorClass) {
+        const container = document.getElementById('log-container');
+        if (!container) return;
+        
+        // Remove waiting placeholder
+        if (container.innerHTML.includes('Waiting for agent connection')) {
+            container.innerHTML = '';
+        }
+        
+        const timeObj = new Date();
+        const timeStr = timeObj.toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        
+        const logEntry = document.createElement('div');
+        logEntry.className = 'mb-1.5 flex gap-3 font-mono text-xs';
+        
+        // Map abstract colors to tailwind classes if needed (since we inject tailwindColorClass as a class string component)
+        let colorClass = `text-${tailwindColorClass}`;
+        if(tailwindColorClass === 'success') colorClass = 'text-green-400';
+        if(tailwindColorClass === 'danger') colorClass = 'text-red-400';
+        if(tailwindColorClass === 'primary') colorClass = 'text-blue-400';
+        if(tailwindColorClass === 'warning') colorClass = 'text-yellow-400';
+        
+        logEntry.innerHTML = `
+            <span class="text-textSecondary/50 font-medium whitespace-nowrap">[${timeStr}]</span>
+            <span class="font-bold text-textPrimary min-w-[70px]">${source}:</span>
+            <span class="${colorClass} break-words">${message}</span>
+        `;
+        
+        container.appendChild(logEntry);
+        
+        // Auto-scroll
+        container.scrollTop = container.scrollHeight;
+        
+        // Prune logic: don't let logs grow infinitely
+        if (container.children.length > 300) {
+            for(let i=0; i < 50; i++) {
+                if(container.firstChild) container.removeChild(container.firstChild);
+            }
+        }
+    }
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        connectWebSocket();
+    });
+</script>
+{% endblock %}

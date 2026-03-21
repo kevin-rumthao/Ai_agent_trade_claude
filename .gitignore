@@ -80,3 +80,5 @@ docs/
 *.pkl
 src/app/models/checkpoints/
 src/app/models/*.bak
+.claude/
+frontend/node_modules/

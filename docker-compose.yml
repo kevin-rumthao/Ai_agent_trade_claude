@@ -4,6 +4,9 @@ services:
   trading-agent:
     build: .
     container_name: ai-trading-agent
+    command: uvicorn app.api.server:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
     volumes:
       # Persist data (state, databases)
       - ./data:/data
@@ -15,9 +18,20 @@ services:
       - DATA_DIR=/data
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
-    # Healthcheck mainly ensures process is running, but we could add a script
     healthcheck:
-      test: [ "CMD", "python", "-c", "import sys; sys.exit(0)" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  frontend:
+    image: node:20-alpine
+    container_name: ai-trading-frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - trading-agent

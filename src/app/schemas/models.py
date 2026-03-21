@@ -50,6 +50,12 @@ class MarketFeatures(BaseModel):
     momentum_5: Optional[float] = None
     momentum_20: Optional[float] = None
 
+    # Phase 8: Sentiment Features
+    sentiment_fear_greed: Optional[float] = None     # 0-1 (normalized Fear & Greed)
+    sentiment_funding_rate: Optional[float] = None    # Raw funding rate (e.g., 0.0001)
+    sentiment_funding_bias: Optional[float] = None    # -1 (short heavy) to +1 (long heavy)
+    sentiment_fg_regime: Optional[float] = None       # 0 (extreme fear) to 1 (extreme greed)
+
 
 class MarketRegime(BaseModel):
     """Market regime classification."""
